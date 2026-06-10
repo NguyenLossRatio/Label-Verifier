@@ -69,7 +69,32 @@ def test_blank_country_of_origin_is_optional_and_does_not_fail_verification():
     country = report.field_results["country_of_origin"]
     assert country.status == "pass"
     assert country.extracted == ""
+    assert country.message == "Country of origin not required for this review."
     assert report.overall_status == "pass"
+
+
+def test_brand_does_not_match_inside_another_word():
+    report = verify_label_text(
+        expected_fields(brand_name="RUM"),
+        "CRUMBLES\nKentucky Straight Bourbon Whiskey\n45% Alc./Vol. (90 Proof)\n750 mL\nOld Tom Distillery, Louisville, KY\n"
+        + STANDARD_WARNING,
+    )
+
+    brand = report.field_results["brand_name"]
+    assert brand.status == "mismatch"
+    assert report.overall_status == "needs_review"
+
+
+def test_net_contents_does_not_match_larger_number():
+    report = verify_label_text(
+        expected_fields(net_contents="750 mL"),
+        "OLD TOM DISTILLERY\nKentucky Straight Bourbon Whiskey\n45% Alc./Vol. (90 Proof)\n1750 mL\nOld Tom Distillery, Louisville, KY\n"
+        + STANDARD_WARNING,
+    )
+
+    net_contents = report.field_results["net_contents"]
+    assert net_contents.status == "mismatch"
+    assert report.overall_status == "needs_review"
 
 
 def test_abv_mismatch_is_flagged():
