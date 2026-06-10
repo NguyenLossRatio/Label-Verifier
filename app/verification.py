@@ -134,7 +134,7 @@ def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldRes
         return _result(
             "government_warning",
             expected_warning,
-            warning_segment,
+            "Government warning",
             "mismatch",
             "Government warning must use uppercase GOVERNMENT WARNING: prefix.",
         )
@@ -145,7 +145,7 @@ def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldRes
             expected_warning,
             warning_segment,
             "pass",
-            "Government warning matched with strict normalized wording and uppercase prefix.",
+            "Government warning matched.",
         )
 
     return _result(
@@ -153,7 +153,7 @@ def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldRes
         expected_warning,
         warning_segment,
         "mismatch",
-        "Government warning wording did not match the expected normalized statement.",
+        "Government warning wording did not match the expected statement.",
     )
 
 
