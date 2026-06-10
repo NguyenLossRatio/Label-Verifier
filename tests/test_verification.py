@@ -132,6 +132,25 @@ def test_government_warning_prefix_must_belong_to_warning_statement():
     assert report.overall_status == "needs_review"
 
 
+def test_government_warning_can_match_wrapped_text():
+    wrapped_warning = STANDARD_WARNING.replace("women should not", "women\nshould not")
+    raw_text = (
+        "OLD TOM DISTILLERY\n"
+        "Kentucky Straight Bourbon Whiskey\n"
+        "45% Alc./Vol. (90 Proof)\n"
+        "750 mL\n"
+        "Old Tom Distillery, Louisville, KY\n"
+        + wrapped_warning
+    )
+    report = verify_label_text(expected_fields(), raw_text)
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "pass"
+    assert warning.message == "Government warning matched."
+    assert "GOVERNMENT WARNING:" in warning.extracted
+    assert report.overall_status == "pass"
+
+
 def test_missing_government_warning_is_missing():
     report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n750 mL\n45% Alc./Vol. (90 Proof)")
 

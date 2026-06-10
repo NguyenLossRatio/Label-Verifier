@@ -50,16 +50,30 @@ def _find_value_match(raw_text: str, expected: str) -> str | None:
 def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | None:
     normalized_warning_label = "government warning"
     normalized_expected = normalize_text(expected_warning)
-    candidates = [
-        line.strip()
-        for line in raw_text.splitlines()
-        if line.strip() and _has_boundary_match(normalize_text(line), normalized_warning_label)
-    ]
+    lines = raw_text.splitlines()
+    candidates = []
+
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or not _has_boundary_match(normalize_text(stripped), normalized_warning_label):
+            continue
+
+        candidate_lines = [stripped]
+        for next_line in lines[index + 1 :]:
+            next_stripped = next_line.strip()
+            if not next_stripped:
+                break
+            if _has_boundary_match(normalize_text(next_stripped), normalized_warning_label):
+                break
+            candidate_lines.append(next_stripped)
+
+        candidates.append(" ".join(candidate_lines))
 
     if candidates:
         return max(
             candidates,
             key=lambda candidate: (
+                normalize_text(candidate) == normalized_expected,
                 _has_boundary_match(normalize_text(candidate), normalized_expected),
                 len(normalize_text(candidate)),
             ),
