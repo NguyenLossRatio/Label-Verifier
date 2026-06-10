@@ -47,6 +47,30 @@ def _find_value_match(raw_text: str, expected: str) -> str | None:
     return _find_phrase_match(raw_text, expected)
 
 
+def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | None:
+    normalized_warning_label = "government warning"
+    normalized_expected = normalize_text(expected_warning)
+    candidates = [
+        line.strip()
+        for line in raw_text.splitlines()
+        if line.strip() and _has_boundary_match(normalize_text(line), normalized_warning_label)
+    ]
+
+    if candidates:
+        return max(
+            candidates,
+            key=lambda candidate: (
+                _has_boundary_match(normalize_text(candidate), normalized_expected),
+                len(normalize_text(candidate)),
+            ),
+        )
+
+    if _has_boundary_match(normalize_text(raw_text), normalized_warning_label):
+        return raw_text.strip()
+
+    return None
+
+
 def _result(field: str, expected: str, extracted: str, status: FieldStatus, message: str) -> FieldResult:
     return FieldResult(
         field=field,
@@ -94,10 +118,10 @@ def _verify_optional_country(expected: str, raw_text: str) -> FieldResult:
 
 
 def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldResult:
-    normalized_raw_text = normalize_text(raw_text)
     normalized_expected = normalize_text(expected_warning)
+    warning_segment = _find_warning_like_segment(raw_text, expected_warning)
 
-    if not _has_boundary_match(normalized_raw_text, "government warning"):
+    if warning_segment is None:
         return _result(
             "government_warning",
             expected_warning,
@@ -106,31 +130,30 @@ def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldRes
             "Government warning statement was not found.",
         )
 
-    if "GOVERNMENT WARNING:" not in raw_text:
+    if not warning_segment.startswith("GOVERNMENT WARNING:"):
         return _result(
             "government_warning",
             expected_warning,
-            "Government warning",
+            warning_segment,
             "mismatch",
             "Government warning must use uppercase GOVERNMENT WARNING: prefix.",
         )
 
-    warning_match = _find_phrase_match(raw_text, expected_warning)
-    if warning_match is not None and _has_boundary_match(normalized_raw_text, normalized_expected):
+    if normalize_text(warning_segment) == normalized_expected:
         return _result(
             "government_warning",
             expected_warning,
-            warning_match,
+            warning_segment,
             "pass",
-            "Government warning matched.",
+            "Government warning matched with strict normalized wording and uppercase prefix.",
         )
 
     return _result(
         "government_warning",
         expected_warning,
-        "GOVERNMENT WARNING:",
+        warning_segment,
         "mismatch",
-        "Government warning wording did not match the expected statement.",
+        "Government warning wording did not match the expected normalized statement.",
     )
 
 
