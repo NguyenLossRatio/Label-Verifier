@@ -1,8 +1,66 @@
-from fastapi import FastAPI
+from typing import Annotated
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.extraction import ExtractionError, extract_field_guesses, extract_text_from_image
+from app.models import ExpectedFields, VerifyResponse
+from app.verification import verify_label_text
 
 app = FastAPI(title="Label Verifier")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse("app/static/index.html")
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/verify", response_model=VerifyResponse)
+async def verify(
+    brand_name: Annotated[str, Form()],
+    class_type: Annotated[str, Form()],
+    alcohol_content: Annotated[str, Form()],
+    net_contents: Annotated[str, Form()],
+    bottler_address: Annotated[str, Form()],
+    country_of_origin: Annotated[str, Form()] = "",
+    government_warning: Annotated[str, Form()] = "",
+    raw_text_override: Annotated[str, Form()] = "",
+    label_image: Annotated[UploadFile | None, File()] = None,
+) -> VerifyResponse:
+    expected = ExpectedFields(
+        brand_name=brand_name,
+        class_type=class_type,
+        alcohol_content=alcohol_content,
+        net_contents=net_contents,
+        bottler_address=bottler_address,
+        country_of_origin=country_of_origin,
+        government_warning=government_warning,
+    )
+
+    if raw_text_override.strip():
+        raw_text = raw_text_override.strip()
+        extraction_ms = 0
+    elif label_image is not None:
+        if not (label_image.content_type or "").startswith("image/"):
+            raise HTTPException(status_code=400, detail="Unsupported file type. Upload an image file.")
+
+        try:
+            raw_text, extraction_ms = extract_text_from_image(await label_image.read())
+        except ExtractionError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        raise HTTPException(status_code=400, detail="Upload a label image or provide raw extracted text.")
+
+    report = verify_label_text(expected, raw_text)
+    return VerifyResponse(
+        **report.model_dump(),
+        extraction_ms=extraction_ms,
+        field_guesses=extract_field_guesses(raw_text),
+    )

@@ -44,3 +44,8 @@ class VerificationReport(BaseModel):
     field_results: dict[str, FieldResult]
     raw_text: str
     processing_ms: int
+
+
+class VerifyResponse(VerificationReport):
+    extraction_ms: int
+    field_guesses: dict[str, str]
