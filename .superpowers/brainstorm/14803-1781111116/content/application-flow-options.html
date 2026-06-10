@@ -1,0 +1,82 @@
+<h2>Choose the prototype workflow</h2>
+<p class="subtitle">The plan can optimize for a fast take-home prototype, a more realistic compliance workflow, or an operations dashboard. Pick the shape that feels most useful.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. Guided Review</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Label Verifier</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+            <div>
+              <div class="label">Step 1</div>
+              <div class="placeholder">Upload label image</div>
+              <div class="label" style="margin-top:10px">Step 2</div>
+              <input class="mock-input" value="Brand, ABV, net contents...">
+              <button class="mock-button" style="margin-top:10px">Verify Label</button>
+            </div>
+            <div>
+              <div class="placeholder">Result summary</div>
+              <div class="placeholder" style="height:34px;margin-top:8px">Field checks</div>
+              <div class="placeholder" style="height:34px;margin-top:8px">Warning check</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Guided Review</h3>
+      <p>Best first version: one clear page where agents upload labels, enter expected values, and get pass/fail results.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. Batch Queue</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Queue | Review | Export</div>
+          <div style="display:grid;grid-template-columns:160px 1fr;gap:12px;margin-top:12px">
+            <div class="mock-sidebar">
+              <div>12 labels</div>
+              <div>8 passed</div>
+              <div>3 warnings</div>
+              <div>1 unreadable</div>
+            </div>
+            <div>
+              <div class="placeholder">Batch upload dropzone</div>
+              <div class="placeholder" style="height:34px;margin-top:8px">Sortable results table</div>
+              <div class="placeholder" style="height:34px;margin-top:8px">Selected label detail</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Batch Queue</h3>
+      <p>Stronger operational story: upload many labels, scan a queue, and drill into problem cases.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. Management Dashboard</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Dashboard | Trends | Review</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px">
+            <div class="placeholder">Volume</div>
+            <div class="placeholder">Accuracy</div>
+            <div class="placeholder">Avg time</div>
+          </div>
+          <div class="placeholder" style="height:86px;margin-top:10px">Charts and recent batches</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Management Dashboard</h3>
+      <p>Useful later, but less important than proving the agent review workflow works.</p>
+    </div>
+  </div>
+</div>
