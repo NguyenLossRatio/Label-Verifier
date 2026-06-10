@@ -55,6 +55,11 @@ def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | No
     normalized_warning_label = "government warning"
     normalized_expected = normalize_text(expected_warning)
     strict_expected = _collapse_whitespace(expected_warning)
+    strict_pattern = r"\s+".join(re.escape(part) for part in strict_expected.split())
+    strict_match = re.search(strict_pattern, raw_text)
+    if strict_match is not None:
+        return _collapse_whitespace(strict_match.group(0))
+
     lines = raw_text.splitlines()
     candidates = []
 

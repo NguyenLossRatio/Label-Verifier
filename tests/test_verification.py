@@ -151,6 +151,26 @@ def test_government_warning_can_match_wrapped_text():
     assert report.overall_status == "pass"
 
 
+def test_government_warning_accepts_wrapped_uppercase_prefix():
+    wrapped_warning = STANDARD_WARNING.replace("GOVERNMENT WARNING:", "GOVERNMENT\nWARNING:")
+    raw_text = (
+        "OLD TOM DISTILLERY\n"
+        "Kentucky Straight Bourbon Whiskey\n"
+        "45% Alc./Vol. (90 Proof)\n"
+        "750 mL\n"
+        "Old Tom Distillery, Louisville, KY\n"
+        + wrapped_warning
+    )
+
+    report = verify_label_text(expected_fields(), raw_text)
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "pass"
+    assert warning.message == "Government warning matched."
+    assert warning.extracted == STANDARD_WARNING
+    assert report.overall_status == "pass"
+
+
 def test_government_warning_ignores_following_unrelated_label_text():
     raw_text = (
         "OLD TOM DISTILLERY\n"
@@ -160,6 +180,26 @@ def test_government_warning_ignores_following_unrelated_label_text():
         "Old Tom Distillery, Louisville, KY\n"
         + STANDARD_WARNING
         + "\n750 mL"
+    )
+
+    report = verify_label_text(expected_fields(), raw_text)
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "pass"
+    assert warning.message == "Government warning matched."
+    assert warning.extracted == STANDARD_WARNING
+    assert report.overall_status == "pass"
+
+
+def test_government_warning_ignores_same_line_trailing_label_text():
+    raw_text = (
+        "OLD TOM DISTILLERY\n"
+        "Kentucky Straight Bourbon Whiskey\n"
+        "45% Alc./Vol. (90 Proof)\n"
+        "750 mL\n"
+        "Old Tom Distillery, Louisville, KY\n"
+        + STANDARD_WARNING
+        + " 750 mL"
     )
 
     report = verify_label_text(expected_fields(), raw_text)
