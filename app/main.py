@@ -1,20 +1,26 @@
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
 
 from app.extraction import ExtractionError, extract_field_guesses, extract_text_from_image
 from app.models import ExpectedFields, VerifyResponse
 from app.verification import verify_label_text
 
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+INDEX_PATH = STATIC_DIR / "index.html"
+
 app = FastAPI(title="Label Verifier")
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse("app/static/index.html")
+    return FileResponse(INDEX_PATH)
 
 
 @app.get("/api/health")
@@ -34,15 +40,18 @@ async def verify(
     raw_text_override: Annotated[str, Form()] = "",
     label_image: Annotated[UploadFile | None, File()] = None,
 ) -> VerifyResponse:
-    expected = ExpectedFields(
-        brand_name=brand_name,
-        class_type=class_type,
-        alcohol_content=alcohol_content,
-        net_contents=net_contents,
-        bottler_address=bottler_address,
-        country_of_origin=country_of_origin,
-        government_warning=government_warning,
-    )
+    try:
+        expected = ExpectedFields(
+            brand_name=brand_name,
+            class_type=class_type,
+            alcohol_content=alcohol_content,
+            net_contents=net_contents,
+            bottler_address=bottler_address,
+            country_of_origin=country_of_origin,
+            government_warning=government_warning,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if raw_text_override.strip():
         raw_text = raw_text_override.strip()

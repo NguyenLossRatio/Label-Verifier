@@ -45,6 +45,58 @@ def test_verify_endpoint_accepts_raw_text_override():
     assert body["field_guesses"]["alcohol_content"] == "45% Alc./Vol. (90 Proof)"
 
 
+def test_verify_endpoint_returns_422_for_blank_required_field():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/verify",
+        data=valid_form_data(
+            brand_name="   ",
+            raw_text_override=(
+                "OLD TOM DISTILLERY\n"
+                "Kentucky Straight Bourbon Whiskey\n"
+                "45% Alc./Vol. (90 Proof)\n"
+                "750 mL\n"
+                "Old Tom Distillery, Louisville, KY\n"
+                + STANDARD_WARNING
+            ),
+        ),
+    )
+
+    assert response.status_code == 422
+    assert "Field is required and cannot be blank" in response.json()["detail"]
+
+
+def test_verify_endpoint_accepts_image_upload(monkeypatch):
+    client = TestClient(app)
+    image_bytes = b"fake image bytes"
+    raw_text = (
+        "OLD TOM DISTILLERY\n"
+        "Kentucky Straight Bourbon Whiskey\n"
+        "45% Alc./Vol. (90 Proof)\n"
+        "750 mL\n"
+        "Old Tom Distillery, Louisville, KY\n"
+        + STANDARD_WARNING
+    )
+
+    def extract_text(image_data):
+        assert image_data == image_bytes
+        return raw_text, 123
+
+    monkeypatch.setattr("app.main.extract_text_from_image", extract_text)
+
+    response = client.post(
+        "/api/verify",
+        data=valid_form_data(),
+        files={"label_image": ("label.png", image_bytes, "image/png")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["extraction_ms"] == 123
+    assert body["overall_status"] == "pass"
+
+
 def test_verify_endpoint_requires_image_or_raw_text():
     client = TestClient(app)
 
