@@ -188,3 +188,23 @@ def test_government_warning_wording_mismatch_is_flagged():
     assert warning.status == "mismatch"
     assert "wording did not match" in warning.message
     assert report.overall_status == "needs_review"
+
+
+def test_government_warning_body_case_change_is_mismatch():
+    altered_warning = STANDARD_WARNING.replace("According", "according")
+    report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + altered_warning)
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "mismatch"
+    assert warning.message == "Government warning wording did not match the expected statement."
+    assert report.overall_status == "needs_review"
+
+
+def test_government_warning_punctuation_change_is_mismatch():
+    altered_warning = STANDARD_WARNING.replace("problems.", "problems")
+    report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + altered_warning)
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "mismatch"
+    assert warning.message == "Government warning wording did not match the expected statement."
+    assert report.overall_status == "needs_review"

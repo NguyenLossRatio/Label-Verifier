@@ -22,6 +22,10 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", no_punctuation).strip()
 
 
+def _collapse_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def _has_boundary_match(normalized_text: str, normalized_expected: str) -> bool:
     pattern = rf"(?<![a-z0-9]){re.escape(normalized_expected)}(?![a-z0-9])"
     return re.search(pattern, normalized_text) is not None
@@ -50,6 +54,7 @@ def _find_value_match(raw_text: str, expected: str) -> str | None:
 def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | None:
     normalized_warning_label = "government warning"
     normalized_expected = normalize_text(expected_warning)
+    strict_expected = _collapse_whitespace(expected_warning)
     lines = raw_text.splitlines()
     candidates = []
 
@@ -60,7 +65,7 @@ def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | No
 
         candidate_lines = [stripped]
         candidate = " ".join(candidate_lines)
-        if normalize_text(candidate) == normalized_expected:
+        if _collapse_whitespace(candidate) == strict_expected:
             return candidate
 
         for next_line in lines[index + 1 :]:
@@ -71,7 +76,7 @@ def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | No
                 break
             candidate_lines.append(next_stripped)
             candidate = " ".join(candidate_lines)
-            if normalize_text(candidate) == normalized_expected:
+            if _collapse_whitespace(candidate) == strict_expected:
                 return candidate
 
         candidates.append(candidate)
@@ -139,7 +144,7 @@ def _verify_optional_country(expected: str, raw_text: str) -> FieldResult:
 
 
 def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldResult:
-    normalized_expected = normalize_text(expected_warning)
+    strict_expected = _collapse_whitespace(expected_warning)
     warning_segment = _find_warning_like_segment(raw_text, expected_warning)
 
     if warning_segment is None:
@@ -160,7 +165,7 @@ def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldRes
             "Government warning must use uppercase GOVERNMENT WARNING: prefix.",
         )
 
-    if normalize_text(warning_segment) == normalized_expected:
+    if _collapse_whitespace(warning_segment) == strict_expected:
         return _result(
             "government_warning",
             expected_warning,
