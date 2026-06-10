@@ -93,6 +93,47 @@ def _verify_optional_country(expected: str, raw_text: str) -> FieldResult:
     return _verify_expected_value("country_of_origin", expected, raw_text)
 
 
+def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldResult:
+    normalized_raw_text = normalize_text(raw_text)
+    normalized_expected = normalize_text(expected_warning)
+
+    if not _has_boundary_match(normalized_raw_text, "government warning"):
+        return _result(
+            "government_warning",
+            expected_warning,
+            "",
+            "missing",
+            "Government warning statement was not found.",
+        )
+
+    if "GOVERNMENT WARNING:" not in raw_text:
+        return _result(
+            "government_warning",
+            expected_warning,
+            "Government warning",
+            "mismatch",
+            "Government warning must use uppercase GOVERNMENT WARNING: prefix.",
+        )
+
+    warning_match = _find_phrase_match(raw_text, expected_warning)
+    if warning_match is not None and _has_boundary_match(normalized_raw_text, normalized_expected):
+        return _result(
+            "government_warning",
+            expected_warning,
+            warning_match,
+            "pass",
+            "Government warning matched.",
+        )
+
+    return _result(
+        "government_warning",
+        expected_warning,
+        "GOVERNMENT WARNING:",
+        "mismatch",
+        "Government warning wording did not match the expected statement.",
+    )
+
+
 def verify_label_text(expected: ExpectedFields, raw_text: str) -> VerificationReport:
     started = time.perf_counter()
     field_results: dict[str, FieldResult] = {}
@@ -113,15 +154,7 @@ def verify_label_text(expected: ExpectedFields, raw_text: str) -> VerificationRe
     field_results["net_contents"] = _verify_expected_value("net_contents", expected.net_contents, raw_text)
     field_results["bottler_address"] = _verify_expected_phrase("bottler_address", expected.bottler_address, raw_text)
     field_results["country_of_origin"] = _verify_optional_country(expected.country_of_origin, raw_text)
-
-    warning_match = _find_phrase_match(raw_text, expected.government_warning)
-    field_results["government_warning"] = _result(
-        "government_warning",
-        expected.government_warning,
-        warning_match or "",
-        "pass" if warning_match is not None else "mismatch",
-        "Government warning matched." if warning_match is not None else "Expected government warning was not found.",
-    )
+    field_results["government_warning"] = _verify_government_warning(expected.government_warning, raw_text)
 
     overall_status = "pass"
     if any(result.status != "pass" for result in field_results.values()):

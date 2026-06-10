@@ -107,3 +107,31 @@ def test_abv_mismatch_is_flagged():
     assert alcohol.status == "mismatch"
     assert "Expected alcohol content was not found" in alcohol.message
     assert report.overall_status == "needs_review"
+
+
+def test_government_warning_requires_uppercase_prefix():
+    bad_warning = STANDARD_WARNING.replace("GOVERNMENT WARNING:", "Government Warning:")
+
+    report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + bad_warning)
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "mismatch"
+    assert "must use uppercase GOVERNMENT WARNING:" in warning.message
+    assert report.overall_status == "needs_review"
+
+
+def test_missing_government_warning_is_missing():
+    report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n750 mL\n45% Alc./Vol. (90 Proof)")
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "missing"
+    assert warning.message == "Government warning statement was not found."
+
+
+def test_government_warning_wording_mismatch_is_flagged():
+    altered_warning = STANDARD_WARNING.replace("may cause health problems", "can cause health problems")
+    report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + altered_warning)
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "mismatch"
+    assert "wording did not match" in warning.message
