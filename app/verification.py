@@ -2,7 +2,7 @@ import re
 import string
 import time
 
-from app.models import ExpectedFields, FieldResult, VerificationReport
+from app.models import ExpectedFields, FieldResult, FieldStatus, VerificationReport
 
 
 FIELD_LABELS = {
@@ -22,19 +22,23 @@ def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", no_punctuation).strip()
 
 
-def _contains_tolerant(raw_text: str, expected: str) -> bool:
+def _find_normalized_match(raw_text: str, expected: str) -> str | None:
     if not expected.strip():
-        return True
-    return normalize_text(expected) in normalize_text(raw_text)
+        return ""
+
+    normalized_expected = normalize_text(expected)
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if stripped and normalized_expected in normalize_text(stripped):
+            return stripped
+
+    if normalized_expected in normalize_text(raw_text):
+        return raw_text.strip()
+
+    return None
 
 
-def _contains_strictish(raw_text: str, expected: str) -> bool:
-    if not expected.strip():
-        return True
-    return normalize_text(expected) in normalize_text(raw_text)
-
-
-def _result(field: str, expected: str, extracted: str, status: str, message: str) -> FieldResult:
+def _result(field: str, expected: str, extracted: str, status: FieldStatus, message: str) -> FieldResult:
     return FieldResult(
         field=field,
         label=FIELD_LABELS[field],
@@ -49,13 +53,14 @@ def verify_label_text(expected: ExpectedFields, raw_text: str) -> VerificationRe
     started = time.perf_counter()
     field_results: dict[str, FieldResult] = {}
 
+    brand_match = _find_normalized_match(raw_text, expected.brand_name)
     field_results["brand_name"] = _result(
         "brand_name",
         expected.brand_name,
-        expected.brand_name if _contains_tolerant(raw_text, expected.brand_name) else "",
-        "pass" if _contains_tolerant(raw_text, expected.brand_name) else "mismatch",
+        brand_match or "",
+        "pass" if brand_match is not None else "mismatch",
         "Brand name matched with tolerant comparison."
-        if _contains_tolerant(raw_text, expected.brand_name)
+        if brand_match is not None
         else "Expected brand name was not found.",
     )
 
@@ -66,22 +71,22 @@ def verify_label_text(expected: ExpectedFields, raw_text: str) -> VerificationRe
         "bottler_address": expected.bottler_address,
         "country_of_origin": expected.country_of_origin,
     }.items():
-        matched = _contains_strictish(raw_text, value)
+        match = _find_normalized_match(raw_text, value)
         field_results[field] = _result(
             field,
             value,
-            value if matched else "",
-            "pass" if matched else "mismatch",
-            f"{FIELD_LABELS[field]} matched." if matched else f"Expected {FIELD_LABELS[field].lower()} was not found.",
+            match or "",
+            "pass" if match is not None else "mismatch",
+            f"{FIELD_LABELS[field]} matched." if match is not None else f"Expected {FIELD_LABELS[field].lower()} was not found.",
         )
 
-    warning_matched = _contains_strictish(raw_text, expected.government_warning)
+    warning_match = _find_normalized_match(raw_text, expected.government_warning)
     field_results["government_warning"] = _result(
         "government_warning",
         expected.government_warning,
-        expected.government_warning if warning_matched else "",
-        "pass" if warning_matched else "mismatch",
-        "Government warning matched." if warning_matched else "Expected government warning was not found.",
+        warning_match or "",
+        "pass" if warning_match is not None else "mismatch",
+        "Government warning matched." if warning_match is not None else "Expected government warning was not found.",
     )
 
     overall_status = "pass"

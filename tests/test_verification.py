@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from app.models import ExpectedFields
 from app.verification import normalize_text, verify_label_text
 
@@ -36,6 +39,36 @@ def test_brand_name_allows_capitalization_and_punctuation_differences():
 
     brand = report.field_results["brand_name"]
     assert brand.status == "pass"
+    assert "Stones Throw" in brand.extracted
+    assert report.overall_status == "pass"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "brand_name",
+        "class_type",
+        "alcohol_content",
+        "net_contents",
+        "bottler_address",
+        "government_warning",
+    ],
+)
+def test_required_expected_fields_must_be_nonblank(field):
+    with pytest.raises(ValidationError):
+        expected_fields(**{field: "   "})
+
+
+def test_blank_country_of_origin_is_optional_and_does_not_fail_verification():
+    report = verify_label_text(
+        expected_fields(country_of_origin=""),
+        "OLD TOM DISTILLERY\nKentucky Straight Bourbon Whiskey\n45% Alc./Vol. (90 Proof)\n750 mL\nOld Tom Distillery, Louisville, KY\n"
+        + STANDARD_WARNING,
+    )
+
+    country = report.field_results["country_of_origin"]
+    assert country.status == "pass"
+    assert country.extracted == ""
     assert report.overall_status == "pass"
 
 
