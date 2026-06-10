@@ -59,6 +59,10 @@ def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | No
             continue
 
         candidate_lines = [stripped]
+        candidate = " ".join(candidate_lines)
+        if normalize_text(candidate) == normalized_expected:
+            return candidate
+
         for next_line in lines[index + 1 :]:
             next_stripped = next_line.strip()
             if not next_stripped:
@@ -66,8 +70,11 @@ def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | No
             if _has_boundary_match(normalize_text(next_stripped), normalized_warning_label):
                 break
             candidate_lines.append(next_stripped)
+            candidate = " ".join(candidate_lines)
+            if normalize_text(candidate) == normalized_expected:
+                return candidate
 
-        candidates.append(" ".join(candidate_lines))
+        candidates.append(candidate)
 
     if candidates:
         return max(
