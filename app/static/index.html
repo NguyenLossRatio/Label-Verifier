@@ -1,1 +1,106 @@
-<!doctype html><title>Label Verifier</title><h1>Label Verifier</h1>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Label Verifier</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Label Verifier</h1>
+        <p>Guided review for alcohol label compliance fields.</p>
+      </div>
+      <output id="status" class="status" aria-live="polite">Ready</output>
+    </header>
+
+    <main class="workspace">
+      <section class="panel upload-panel" aria-labelledby="uploadTitle">
+        <div class="panel-heading">
+          <h2 id="uploadTitle">Label Source</h2>
+          <p>Upload a label image, paste extracted text, or provide both.</p>
+        </div>
+
+        <label class="drop-zone" for="labelImage">
+          <span class="drop-title">Choose label image</span>
+          <span class="drop-copy">PNG, JPG, or another image file</span>
+          <input id="labelImage" name="label_image" type="file" accept="image/*">
+        </label>
+
+        <div class="preview-frame">
+          <img id="preview" alt="Selected label preview">
+          <p id="previewPlaceholder">No image selected</p>
+        </div>
+
+        <label class="field-label" for="rawTextOverride">Raw extracted text override</label>
+        <textarea
+          id="rawTextOverride"
+          name="raw_text_override"
+          rows="8"
+          placeholder="Paste OCR text here when you want to review text directly."
+        ></textarea>
+      </section>
+
+      <section class="panel review-panel" aria-labelledby="fieldsTitle">
+        <div class="panel-heading">
+          <h2 id="fieldsTitle">Expected Fields</h2>
+          <p>Enter the values that should appear on the label.</p>
+        </div>
+
+        <form id="expectedFields">
+          <div class="field-grid">
+            <label>
+              <span>Brand name</span>
+              <input name="brand_name" type="text" autocomplete="organization" required>
+            </label>
+
+            <label>
+              <span>Class/type</span>
+              <input name="class_type" type="text" required>
+            </label>
+
+            <label>
+              <span>Alcohol content</span>
+              <input name="alcohol_content" type="text" placeholder="45% Alc./Vol. (90 Proof)" required>
+            </label>
+
+            <label>
+              <span>Net contents</span>
+              <input name="net_contents" type="text" placeholder="750 mL" required>
+            </label>
+
+            <label class="wide-field">
+              <span>Bottler/producer address</span>
+              <input name="bottler_address" type="text" required>
+            </label>
+
+            <label>
+              <span>Country of origin</span>
+              <input name="country_of_origin" type="text">
+            </label>
+
+            <label class="wide-field">
+              <span>Government warning</span>
+              <textarea name="government_warning" rows="4" required></textarea>
+            </label>
+          </div>
+
+          <button id="verifyButton" type="submit">Verify Label</button>
+        </form>
+      </section>
+
+      <section class="panel results-panel" aria-labelledby="resultsTitle">
+        <div class="panel-heading">
+          <h2 id="resultsTitle">Review Results</h2>
+          <p>Field-by-field comparison appears after verification.</p>
+        </div>
+        <div id="results" aria-live="polite">
+          <p class="empty-state">No results yet.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
