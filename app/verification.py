@@ -113,30 +113,49 @@ def _result(field: str, expected: str, extracted: str, status: FieldStatus, mess
     )
 
 
-def _verify_expected_phrase(field: str, expected: str, raw_text: str) -> FieldResult:
+def _blank_expected_result(field: str, expected: str, extracted_guess: str = "") -> FieldResult:
+    return _result(
+        field,
+        expected,
+        extracted_guess,
+        "needs_review",
+        f"Expected {FIELD_LABELS[field].lower()} was left blank for testing.",
+    )
+
+
+def _verify_expected_phrase(field: str, expected: str, raw_text: str, extracted_guess: str = "") -> FieldResult:
+    if not expected.strip():
+        return _blank_expected_result(field, expected, extracted_guess)
+
     match = _find_phrase_match(raw_text, expected)
     return _result(
         field,
         expected,
-        match or "",
+        extracted_guess or match or "",
         "pass" if match is not None else "mismatch",
         f"{FIELD_LABELS[field]} matched." if match is not None else f"Expected {FIELD_LABELS[field].lower()} was not found.",
     )
 
 
-def _verify_expected_value(field: str, expected: str, raw_text: str) -> FieldResult:
+def _verify_expected_value(field: str, expected: str, raw_text: str, extracted_guess: str = "") -> FieldResult:
+    if not expected.strip():
+        return _blank_expected_result(field, expected, extracted_guess)
+
     match = _find_value_match(raw_text, expected)
     return _result(
         field,
         expected,
-        match or "",
+        extracted_guess or match or "",
         "pass" if match is not None else "mismatch",
         f"{FIELD_LABELS[field]} matched." if match is not None else f"Expected {FIELD_LABELS[field].lower()} was not found.",
     )
 
 
-def _verify_optional_country(expected: str, raw_text: str) -> FieldResult:
+def _verify_optional_country(expected: str, raw_text: str, extracted_guess: str = "") -> FieldResult:
     if not expected.strip():
+        if extracted_guess:
+            return _blank_expected_result("country_of_origin", expected, extracted_guess)
+
         return _result(
             "country_of_origin",
             expected,
@@ -145,70 +164,122 @@ def _verify_optional_country(expected: str, raw_text: str) -> FieldResult:
             "Country of origin not required for this review.",
         )
 
-    return _verify_expected_value("country_of_origin", expected, raw_text)
+    return _verify_expected_value("country_of_origin", expected, raw_text, extracted_guess)
 
 
-def _verify_government_warning(expected_warning: str, raw_text: str) -> FieldResult:
-    strict_expected = _collapse_whitespace(expected_warning)
-    warning_segment = _find_warning_like_segment(raw_text, expected_warning)
+def _verify_government_warning(expected_warning: str, raw_text: str, extracted_guess: str = "") -> FieldResult:
+    if not expected_warning.strip():
+        return _blank_expected_result("government_warning", expected_warning, extracted_guess)
 
-    if warning_segment is None:
+    extracted_display = extracted_guess or ""
+
+    if extracted_guess and _collapse_whitespace(extracted_guess) == _collapse_whitespace(expected_warning):
         return _result(
             "government_warning",
             expected_warning,
-            "",
+            extracted_guess,
+            "pass",
+            "Government warning matched.",
+        )
+
+    if expected_warning in raw_text:
+        return _result(
+            "government_warning",
+            expected_warning,
+            extracted_display or expected_warning,
+            "pass",
+            "Government warning matched.",
+        )
+
+    warning_segment = _find_warning_like_segment(raw_text, expected_warning)
+
+    if warning_segment is None:
+        if extracted_guess:
+            return _result(
+                "government_warning",
+                expected_warning,
+                extracted_guess,
+                "mismatch",
+                "Government warning was detected, but must exactly match the expected statement, including case.",
+            )
+
+        return _result(
+            "government_warning",
+            expected_warning,
+            extracted_guess,
             "missing",
             "Government warning statement was not found.",
+        )
+
+    if _collapse_whitespace(warning_segment) == _collapse_whitespace(expected_warning):
+        return _result(
+            "government_warning",
+            expected_warning,
+            extracted_display or warning_segment,
+            "pass",
+            "Government warning matched.",
         )
 
     if not warning_segment.startswith("GOVERNMENT WARNING:"):
         return _result(
             "government_warning",
             expected_warning,
-            "Government warning",
+            extracted_display or "Government warning",
             "mismatch",
             "Government warning must use uppercase GOVERNMENT WARNING: prefix.",
-        )
-
-    if _collapse_whitespace(warning_segment) == strict_expected:
-        return _result(
-            "government_warning",
-            expected_warning,
-            warning_segment,
-            "pass",
-            "Government warning matched.",
         )
 
     return _result(
         "government_warning",
         expected_warning,
-        warning_segment,
+        extracted_display or warning_segment,
         "mismatch",
-        "Government warning wording did not match the expected statement.",
+        "Government warning must exactly match the expected statement, including case.",
     )
 
 
-def verify_label_text(expected: ExpectedFields, raw_text: str) -> VerificationReport:
+def verify_label_text(
+    expected: ExpectedFields,
+    raw_text: str,
+    field_guesses: dict[str, str] | None = None,
+) -> VerificationReport:
     started = time.perf_counter()
+    field_guesses = field_guesses or {}
     field_results: dict[str, FieldResult] = {}
 
-    brand_match = _find_phrase_match(raw_text, expected.brand_name)
+    brand_match = None if not expected.brand_name.strip() else _find_phrase_match(raw_text, expected.brand_name)
     field_results["brand_name"] = _result(
         "brand_name",
         expected.brand_name,
-        brand_match or "",
-        "pass" if brand_match is not None else "mismatch",
+        field_guesses.get("brand_name", "") or brand_match or "",
+        "pass" if brand_match is not None else ("needs_review" if not expected.brand_name.strip() else "mismatch"),
         "Brand name matched with tolerant comparison."
         if brand_match is not None
-        else "Expected brand name was not found.",
+        else (
+            "Expected brand name was left blank for testing."
+            if not expected.brand_name.strip()
+            else "Expected brand name was not found."
+        ),
     )
 
-    field_results["class_type"] = _verify_expected_phrase("class_type", expected.class_type, raw_text)
-    field_results["alcohol_content"] = _verify_expected_value("alcohol_content", expected.alcohol_content, raw_text)
-    field_results["net_contents"] = _verify_expected_value("net_contents", expected.net_contents, raw_text)
-    field_results["bottler_address"] = _verify_expected_phrase("bottler_address", expected.bottler_address, raw_text)
-    field_results["country_of_origin"] = _verify_optional_country(expected.country_of_origin, raw_text)
-    field_results["government_warning"] = _verify_government_warning(expected.government_warning, raw_text)
+    field_results["class_type"] = _verify_expected_phrase(
+        "class_type", expected.class_type, raw_text, field_guesses.get("class_type", "")
+    )
+    field_results["alcohol_content"] = _verify_expected_value(
+        "alcohol_content", expected.alcohol_content, raw_text, field_guesses.get("alcohol_content", "")
+    )
+    field_results["net_contents"] = _verify_expected_value(
+        "net_contents", expected.net_contents, raw_text, field_guesses.get("net_contents", "")
+    )
+    field_results["bottler_address"] = _verify_expected_phrase(
+        "bottler_address", expected.bottler_address, raw_text, field_guesses.get("bottler_address", "")
+    )
+    field_results["country_of_origin"] = _verify_optional_country(
+        expected.country_of_origin, raw_text, field_guesses.get("country_of_origin", "")
+    )
+    field_results["government_warning"] = _verify_government_warning(
+        expected.government_warning, raw_text, field_guesses.get("government_warning", "")
+    )
 
     overall_status = "pass"
     if any(result.status != "pass" for result in field_results.values()):

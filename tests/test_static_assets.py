@@ -37,3 +37,35 @@ def test_frontend_javascript_calls_verify_endpoint():
 
     assert 'fetch("/api/verify"' in javascript
     assert "renderResults" in javascript
+
+
+def test_expected_field_inputs_are_optional_for_testing():
+    html = Path("app/static/index.html").read_text()
+
+    for field_name in (
+        "brand_name",
+        "class_type",
+        "alcohol_content",
+        "net_contents",
+        "bottler_address",
+        "government_warning",
+    ):
+        field_marker = f'name="{field_name}"'
+        field_start = html.index(field_marker)
+        field_end = html.find(">", field_start)
+        assert "required" not in html[field_start:field_end]
+
+
+def test_frontend_uses_field_guesses_for_extracted_display():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert "field_guesses" in javascript
+    assert "fieldGuesses" in javascript
+
+
+def test_frontend_preserves_multiline_field_value_formatting():
+    javascript = Path("app/static/app.js").read_text()
+    stylesheet = Path("app/static/styles.css").read_text()
+
+    assert "field-value" in javascript
+    assert "white-space: pre-wrap" in stylesheet

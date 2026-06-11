@@ -31,7 +31,7 @@ def test_verify_endpoint_accepts_raw_text_override():
                 "Kentucky Straight Bourbon Whiskey\n"
                 "45% Alc./Vol. (90 Proof)\n"
                 "750 mL\n"
-                "Old Tom Distillery, Louisville, KY\n"
+                "Bottled by Old Tom Distillery, Louisville, KY\n"
                 + STANDARD_WARNING
             ),
         ),
@@ -45,26 +45,37 @@ def test_verify_endpoint_accepts_raw_text_override():
     assert body["field_guesses"]["alcohol_content"] == "45% Alc./Vol. (90 Proof)"
 
 
-def test_verify_endpoint_returns_422_for_blank_required_field():
+def test_verify_endpoint_accepts_blank_expected_fields_for_testing():
     client = TestClient(app)
 
     response = client.post(
         "/api/verify",
         data=valid_form_data(
-            brand_name="   ",
+            brand_name="",
+            class_type="",
+            alcohol_content="",
+            net_contents="",
+            bottler_address="",
+            government_warning="",
             raw_text_override=(
                 "OLD TOM DISTILLERY\n"
                 "Kentucky Straight Bourbon Whiskey\n"
                 "45% Alc./Vol. (90 Proof)\n"
                 "750 mL\n"
-                "Old Tom Distillery, Louisville, KY\n"
+                "Bottled by Old Tom Distillery, Louisville, KY\n"
                 + STANDARD_WARNING
             ),
         ),
     )
 
-    assert response.status_code == 422
-    assert "Field is required and cannot be blank" in response.json()["detail"]
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overall_status"] == "needs_review"
+    assert body["field_results"]["brand_name"]["extracted"] == "OLD TOM DISTILLERY"
+    assert body["field_results"]["class_type"]["extracted"] == "Whiskey"
+    assert body["field_results"]["alcohol_content"]["extracted"] == "45% Alc./Vol. (90 Proof)"
+    assert body["field_results"]["net_contents"]["extracted"] == "750 mL"
+    assert body["field_results"]["bottler_address"]["extracted"] == "Bottled by Old Tom Distillery, Louisville, KY"
 
 
 def test_verify_endpoint_accepts_image_upload(monkeypatch):

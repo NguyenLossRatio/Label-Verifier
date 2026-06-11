@@ -40,9 +40,15 @@ function renderError(message) {
   results.innerHTML = `<div class="error-box" role="alert">${escapeHtml(message)}</div>`;
 }
 
-function renderFieldRow(result) {
+function renderFieldRow(result, detectedValue = "") {
   const label = result?.label || result?.field || "Field";
   const status = result?.status || "needs_review";
+  const extracted = result?.extracted || detectedValue;
+  const expected = result?.expected || "";
+  const message = result?.message || "";
+  const extractedMarkup = extracted
+    ? `<div class="field-value">${escapeHtml(extracted)}</div>`
+    : '<div class="field-value empty-value"><em>Not found</em></div>';
 
   return `
     <article class="result-row">
@@ -51,9 +57,18 @@ function renderFieldRow(result) {
         <span class="field-status ${escapeHtml(status)}">${escapeHtml(formatStatus(status))}</span>
       </div>
       <div class="field-detail">
-        <p><strong>Expected:</strong> ${escapeHtml(result?.expected || "")}</p>
-        <p><strong>Extracted:</strong> ${escapeHtml(result?.extracted || "") || "<em>Not found</em>"}</p>
-        <p><strong>Message:</strong> ${escapeHtml(result?.message || "")}</p>
+        <div>
+          <strong>Expected:</strong>
+          <div class="field-value">${escapeHtml(expected)}</div>
+        </div>
+        <div>
+          <strong>Extracted:</strong>
+          ${extractedMarkup}
+        </div>
+        <div>
+          <strong>Message:</strong>
+          <div class="field-value">${escapeHtml(message)}</div>
+        </div>
       </div>
     </article>
   `;
@@ -64,9 +79,10 @@ function renderResults(data) {
   const processingMs = Number(data?.processing_ms ?? 0);
   const extractionMs = Number(data?.extraction_ms ?? 0);
   const fieldResults = data?.field_results || {};
+  const fieldGuesses = data?.field_guesses || {};
   const rows = fieldOrder
     .filter((fieldName) => fieldResults[fieldName])
-    .map((fieldName) => renderFieldRow(fieldResults[fieldName]))
+    .map((fieldName) => renderFieldRow(fieldResults[fieldName], fieldGuesses[fieldName]))
     .join("");
 
   results.innerHTML = `

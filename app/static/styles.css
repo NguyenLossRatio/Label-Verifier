@@ -302,13 +302,25 @@ button:focus-visible {
   min-width: 0;
 }
 
-.field-detail p,
+.field-detail,
+.field-value,
 .raw-text {
   overflow-wrap: anywhere;
 }
 
 .field-detail strong {
+  display: block;
+  margin-bottom: 0.2rem;
   color: var(--text);
+}
+
+.field-value {
+  min-height: 1.5rem;
+  white-space: pre-wrap;
+}
+
+.empty-value {
+  color: var(--muted);
 }
 
 details {

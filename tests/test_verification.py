@@ -1,5 +1,4 @@
 import pytest
-from pydantic import ValidationError
 
 from app.models import ExpectedFields
 from app.verification import normalize_text, verify_label_text
@@ -54,9 +53,88 @@ def test_brand_name_allows_capitalization_and_punctuation_differences():
         "government_warning",
     ],
 )
-def test_required_expected_fields_must_be_nonblank(field):
-    with pytest.raises(ValidationError):
-        expected_fields(**{field: "   "})
+def test_expected_fields_may_be_blank_for_testing(field):
+    fields = expected_fields(**{field: "   "})
+
+    assert getattr(fields, field) == "   "
+
+
+def test_blank_expected_field_reports_detected_guess_for_testing():
+    report = verify_label_text(
+        expected_fields(alcohol_content=""),
+        "OLD TOM DISTILLERY\n45% Alc./Vol. (90 Proof)\n750 mL\n" + STANDARD_WARNING,
+        field_guesses={"alcohol_content": "45% Alc./Vol. (90 Proof)"},
+    )
+
+    alcohol = report.field_results["alcohol_content"]
+    assert alcohol.status == "needs_review"
+    assert alcohol.expected == ""
+    assert alcohol.extracted == "45% Alc./Vol. (90 Proof)"
+    assert "left blank" in alcohol.message
+    assert report.overall_status == "needs_review"
+
+
+def test_filled_expected_field_preserves_detected_guess_for_display():
+    extracted_guess = "45% Alc./Vol.\n(90 Proof)"
+
+    blank_report = verify_label_text(
+        expected_fields(alcohol_content=""),
+        "OLD TOM DISTILLERY\n45% Alc./Vol. (90 Proof)\n750 mL\n" + STANDARD_WARNING,
+        field_guesses={"alcohol_content": extracted_guess},
+    )
+    filled_report = verify_label_text(
+        expected_fields(alcohol_content="45% Alc./Vol. (90 Proof)"),
+        "OLD TOM DISTILLERY\n45% Alc./Vol. (90 Proof)\n750 mL\n" + STANDARD_WARNING,
+        field_guesses={"alcohol_content": extracted_guess},
+    )
+
+    assert blank_report.field_results["alcohol_content"].extracted == extracted_guess
+    assert filled_report.field_results["alcohol_content"].status == "pass"
+    assert filled_report.field_results["alcohol_content"].extracted == extracted_guess
+
+
+def test_filled_brand_preserves_detected_guess_for_display():
+    extracted_guess = "OLD\nTOM DISTILLERY"
+
+    blank_report = verify_label_text(
+        expected_fields(brand_name=""),
+        "OLD TOM DISTILLERY\n750 mL\n" + STANDARD_WARNING,
+        field_guesses={"brand_name": extracted_guess},
+    )
+    filled_report = verify_label_text(
+        expected_fields(brand_name="OLD TOM DISTILLERY"),
+        "OLD TOM DISTILLERY\n750 mL\n" + STANDARD_WARNING,
+        field_guesses={"brand_name": extracted_guess},
+    )
+
+    assert blank_report.field_results["brand_name"].extracted == extracted_guess
+    assert filled_report.field_results["brand_name"].status == "pass"
+    assert filled_report.field_results["brand_name"].extracted == extracted_guess
+
+
+def test_mismatched_expected_field_reports_detected_guess_when_available():
+    report = verify_label_text(
+        expected_fields(net_contents="750 mL"),
+        "OLD TOM DISTILLERY\n1 PINT\n" + STANDARD_WARNING,
+        field_guesses={"net_contents": "1 PINT"},
+    )
+
+    net_contents = report.field_results["net_contents"]
+    assert net_contents.status == "mismatch"
+    assert net_contents.extracted == "1 PINT"
+
+
+def test_blank_country_reports_detected_guess_for_testing():
+    report = verify_label_text(
+        expected_fields(country_of_origin=""),
+        "OLD TOM DISTILLERY\nImported from France\n" + STANDARD_WARNING,
+        field_guesses={"country_of_origin": "France"},
+    )
+
+    country = report.field_results["country_of_origin"]
+    assert country.status == "needs_review"
+    assert country.extracted == "France"
+    assert "left blank" in country.message
 
 
 def test_blank_country_of_origin_is_optional_and_does_not_fail_verification():
@@ -132,7 +210,7 @@ def test_government_warning_prefix_must_belong_to_warning_statement():
     assert report.overall_status == "needs_review"
 
 
-def test_government_warning_can_match_wrapped_text():
+def test_government_warning_allows_wrapped_text_with_exact_case_and_words():
     wrapped_warning = STANDARD_WARNING.replace("women should not", "women\nshould not")
     raw_text = (
         "OLD TOM DISTILLERY\n"
@@ -147,11 +225,10 @@ def test_government_warning_can_match_wrapped_text():
     warning = report.field_results["government_warning"]
     assert warning.status == "pass"
     assert warning.message == "Government warning matched."
-    assert "GOVERNMENT WARNING:" in warning.extracted
     assert report.overall_status == "pass"
 
 
-def test_government_warning_accepts_wrapped_uppercase_prefix():
+def test_government_warning_allows_wrapped_uppercase_prefix():
     wrapped_warning = STANDARD_WARNING.replace("GOVERNMENT WARNING:", "GOVERNMENT\nWARNING:")
     raw_text = (
         "OLD TOM DISTILLERY\n"
@@ -167,7 +244,6 @@ def test_government_warning_accepts_wrapped_uppercase_prefix():
     warning = report.field_results["government_warning"]
     assert warning.status == "pass"
     assert warning.message == "Government warning matched."
-    assert warning.extracted == STANDARD_WARNING
     assert report.overall_status == "pass"
 
 
@@ -189,6 +265,32 @@ def test_government_warning_ignores_following_unrelated_label_text():
     assert warning.message == "Government warning matched."
     assert warning.extracted == STANDARD_WARNING
     assert report.overall_status == "pass"
+
+
+def test_government_warning_pass_preserves_ocr_guess_for_extracted_display():
+    raw_text = (
+        "OLD TOM DISTILLERY\n"
+        "Kentucky Straight Bourbon Whiskey\n"
+        "45% Alc./Vol. (90 Proof)\n"
+        "750 mL\n"
+        "Old Tom Distillery, Louisville, KY\n"
+        + STANDARD_WARNING
+    )
+    warning_guess = (
+        "GOVERNMENT WARNING:\n"
+        "(1) According to the Surgeon General, women should not drink alcoholic beverages\n"
+        "during pregnancy because of the risk of birth defects."
+    )
+
+    report = verify_label_text(
+        expected_fields(),
+        raw_text,
+        field_guesses={"government_warning": warning_guess},
+    )
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "pass"
+    assert warning.extracted == warning_guess
 
 
 def test_government_warning_ignores_same_line_trailing_label_text():
@@ -220,13 +322,80 @@ def test_missing_government_warning_is_missing():
     assert report.overall_status == "needs_review"
 
 
+def test_government_warning_guess_is_mismatch_instead_of_missing():
+    warning_guess = (
+        "RNMENT WARNING:\n"
+        "Neate SURGEON GENERA\n"
+        "(1) WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES"
+    )
+
+    report = verify_label_text(
+        expected_fields(),
+        "OLD TOM DISTILLERY\n750 mL\n45% Alc./Vol. (90 Proof)",
+        field_guesses={"government_warning": warning_guess},
+    )
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "mismatch"
+    assert warning.extracted == warning_guess
+    assert warning.message == "Government warning was detected, but must exactly match the expected statement, including case."
+    assert report.overall_status == "needs_review"
+
+
+def test_government_warning_mismatch_preserves_ocr_guess_for_extracted_display():
+    raw_text = (
+        "OLD TOM DISTILLERY\n"
+        "GOVERNMENT WARNING:\n"
+        "(1) According to the Surgeon General, women should not drink alcoholic beverages\n"
+        "(2) Consumption of alcoholic beverages impairs your ability to drive a car"
+    )
+    warning_guess = (
+        "GOVERNMENT WARNING:\n"
+        "(1) According to the Surgeon General, women should not drink alcoholic beverages\n"
+        "(2) Consumption of alcoholic beverages impairs your ability to drive a car"
+    )
+
+    report = verify_label_text(
+        expected_fields(),
+        raw_text,
+        field_guesses={"government_warning": warning_guess},
+    )
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "mismatch"
+    assert warning.extracted == warning_guess
+    assert report.overall_status == "needs_review"
+
+
+def test_government_warning_exact_ocr_guess_passes_even_when_raw_text_is_noisy():
+    warning_guess = STANDARD_WARNING.replace("women should not", "women\nshould not")
+    raw_text = (
+        "OLD TOM DISTILLERY\n"
+        "GOVERNMENT WARNING:\n"
+        "(1) According to the Surgeon General, women\n"
+        "LOGO NOISE\n"
+        "should not drink alcoholic beverages during pregnancy because of the risk of birth defects.\n"
+        "(2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
+    )
+
+    report = verify_label_text(
+        expected_fields(),
+        raw_text,
+        field_guesses={"government_warning": warning_guess},
+    )
+
+    warning = report.field_results["government_warning"]
+    assert warning.status == "pass"
+    assert warning.extracted == warning_guess
+
+
 def test_government_warning_wording_mismatch_is_flagged():
     altered_warning = STANDARD_WARNING.replace("may cause health problems", "can cause health problems")
     report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + altered_warning)
 
     warning = report.field_results["government_warning"]
     assert warning.status == "mismatch"
-    assert "wording did not match" in warning.message
+    assert warning.message == "Government warning must exactly match the expected statement, including case."
     assert report.overall_status == "needs_review"
 
 
@@ -236,7 +405,7 @@ def test_government_warning_body_case_change_is_mismatch():
 
     warning = report.field_results["government_warning"]
     assert warning.status == "mismatch"
-    assert warning.message == "Government warning wording did not match the expected statement."
+    assert warning.message == "Government warning must exactly match the expected statement, including case."
     assert report.overall_status == "needs_review"
 
 
@@ -246,5 +415,5 @@ def test_government_warning_punctuation_change_is_mismatch():
 
     warning = report.field_results["government_warning"]
     assert warning.status == "mismatch"
-    assert warning.message == "Government warning wording did not match the expected statement."
+    assert warning.message == "Government warning must exactly match the expected statement, including case."
     assert report.overall_status == "needs_review"

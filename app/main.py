@@ -30,11 +30,11 @@ def health() -> dict[str, str]:
 
 @app.post("/api/verify", response_model=VerifyResponse)
 async def verify(
-    brand_name: Annotated[str, Form()],
-    class_type: Annotated[str, Form()],
-    alcohol_content: Annotated[str, Form()],
-    net_contents: Annotated[str, Form()],
-    bottler_address: Annotated[str, Form()],
+    brand_name: Annotated[str, Form()] = "",
+    class_type: Annotated[str, Form()] = "",
+    alcohol_content: Annotated[str, Form()] = "",
+    net_contents: Annotated[str, Form()] = "",
+    bottler_address: Annotated[str, Form()] = "",
     country_of_origin: Annotated[str, Form()] = "",
     government_warning: Annotated[str, Form()] = "",
     raw_text_override: Annotated[str, Form()] = "",
@@ -67,9 +67,10 @@ async def verify(
     else:
         raise HTTPException(status_code=400, detail="Upload a label image or provide raw extracted text.")
 
-    report = verify_label_text(expected, raw_text)
+    field_guesses = extract_field_guesses(raw_text)
+    report = verify_label_text(expected, raw_text, field_guesses=field_guesses)
     return VerifyResponse(
         **report.model_dump(),
         extraction_ms=extraction_ms,
-        field_guesses=extract_field_guesses(raw_text),
+        field_guesses=field_guesses,
     )
