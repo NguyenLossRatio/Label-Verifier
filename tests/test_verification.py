@@ -186,6 +186,34 @@ def test_net_contents_does_not_match_larger_number():
     assert report.overall_status == "needs_review"
 
 
+@pytest.mark.parametrize(
+    "raw_net_contents",
+    ["12FL.OZ.", "12fl.oz.", "12 FL\nOZ", "12  FL.  OZ.", "12FLOZ. 4% ALC/VOL"],
+)
+def test_net_contents_ignores_spacing_punctuation_and_line_breaks(raw_net_contents):
+    report = verify_label_text(
+        expected_fields(net_contents="12 FL OZ"),
+        "OLD TOM DISTILLERY\nKentucky Straight Bourbon Whiskey\n45% Alc./Vol. (90 Proof)\n"
+        + raw_net_contents
+        + "\nOld Tom Distillery, Louisville, KY\n"
+        + STANDARD_WARNING,
+    )
+
+    net_contents = report.field_results["net_contents"]
+    assert net_contents.status == "pass"
+
+
+def test_net_contents_tolerates_leading_ocr_noise_for_fluid_ounces():
+    report = verify_label_text(
+        expected_fields(net_contents="12 FL OZ"),
+        "LIZZIE TWISTER BLACKBERRY\n712 FL. OZ.\nALC. 5.6%\n" + STANDARD_WARNING,
+    )
+
+    net_contents = report.field_results["net_contents"]
+    assert net_contents.status == "pass"
+    assert net_contents.extracted == "12 FL. OZ."
+
+
 def test_abv_mismatch_is_flagged():
     report = verify_label_text(
         expected_fields(alcohol_content="45% Alc./Vol. (90 Proof)"),

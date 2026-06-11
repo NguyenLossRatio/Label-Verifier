@@ -1,6 +1,8 @@
 import io
+import os
 import re
 import time
+from dataclasses import dataclass
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
 import pytesseract
@@ -10,17 +12,55 @@ class ExtractionError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class FieldCandidate:
+    field: str
+    value: str
+    source: str
+    confidence: float
+    raw_text: str
+
+
+EXTRACTED_FIELDS = (
+    "brand_name",
+    "class_type",
+    "alcohol_content",
+    "net_contents",
+    "bottler_address",
+    "country_of_origin",
+    "government_warning",
+)
 ALCOHOL_CONTENT_PATTERN = re.compile(
-    r"\b\d{1,2}(?:\.\d+)?\s*%\s*(?:(?:Alc|Alcohol)\.?\s*/\s*Vol\.?|Alcohol\s+Volume)(?:\s*\(\d{1,3}\s*Proof\))?",
+    r"\b(?:"
+    r"\d{1,2}(?:\.\d+)?\s*%\s*(?:(?:Alc|Alcohol)\.?\s*/\s*Vol\.?|Alcohol\s+Volume)(?:\s*\(\d{1,3}\s*Proof\))?"
+    r"|(?:Alc|Alcohol)\.?\s*\d{1,2}(?:\.\d+)?\s*%(?:\s*(?:By\s+Vol(?:ume)?\.?|/\s*Vol\.?))?"
+    r")",
     re.IGNORECASE,
 )
 NET_CONTENTS_PATTERN = re.compile(
     r"\b\d+(?:\.\d+)?\s*(?:mL|fl\.?\s*oz\.?|L|pints?)\.?(?=\s|$|[),;])",
     re.IGNORECASE,
 )
+NET_CONTENTS_VALUE_PATTERN = re.compile(
+    r"\b(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>mL|fl\.?\s*oz\.?|L|pints?)\.?(?=\s|$|[),;])",
+    re.IGNORECASE,
+)
 BOTTLER_ADDRESS_PATTERN = re.compile(
     r"^.*\b(?:Bottled by|Produced by|Distilled by)\b.*$",
     re.IGNORECASE | re.MULTILINE,
+)
+BREWED_CANNED_ADDRESS_PATTERN = re.compile(
+    r"\b(BREWED\s*(?:&|AND)\s*CANNED\s+IN\s+.+?,\s*[A-Z]{2}\s+BY\s+.+?\b"
+    r"(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)\b(?:,?\s*(?:LLC|INC|CO\.?|COMPANY))?\.?)",
+    re.IGNORECASE | re.DOTALL,
+)
+PRODUCER_COMPANY_PATTERN = re.compile(
+    r"\b([A-Z][A-Z0-9 &'.,-]*?\b(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)\b(?:,?\s*(?:LLC|INC|CO\.?|COMPANY))?\.?)",
+    re.IGNORECASE,
+)
+POSTAL_ADDRESS_PATTERN = re.compile(
+    r"\b(\d{2,6}\s+.+?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)\b",
+    re.IGNORECASE,
 )
 GOVERNMENT_WARNING_LABEL_PATTERN = re.compile(r"\bgovernment\s+warning\b", re.IGNORECASE)
 OCR_WARNING_LABEL_PATTERN = re.compile(
@@ -78,12 +118,54 @@ CLASS_SENTENCE_NOISE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 BRAND_SUFFIX_PATTERN = re.compile(r"\b(?:brewing|brewery|distillery|estate|winery|vineyards?)\b", re.IGNORECASE)
+COMPANY_CANDIDATE_PATTERN = re.compile(
+    r"\b((?:(?:[A-Z][A-Za-z0-9'.,-]*|&)\s+){0,8}"
+    r"(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)"
+    r"(?:\s+(?:LLC|INC|CO[.e0]?|COMPANY))?\.?)",
+    re.IGNORECASE,
+)
 GENERIC_BRAND_LABELS = {
     "brewery",
     "distillery",
     "estate winery",
     "winery",
 }
+COMPANY_LEADING_NOISE_WORDS = {
+    "AQY",
+    "AY",
+    "CANNED",
+    "ERE",
+    "FRESH",
+    "LOCAL",
+    "ON",
+    "QNEY",
+    "RIVEE",
+    "RIVEK",
+    "RIYEE",
+    "SOE",
+}
+COMMON_FLUID_OUNCE_AMOUNTS = (
+    "1.5",
+    "5",
+    "7",
+    "8",
+    "8.4",
+    "10",
+    "11",
+    "11.2",
+    "12",
+    "12.7",
+    "13",
+    "14.9",
+    "16",
+    "19.2",
+    "22",
+    "24",
+    "25.4",
+    "32",
+    "40",
+    "64",
+)
 MAX_OCR_IMAGE_DIMENSION = 2200
 MIN_OCR_IMAGE_DIMENSION = 1400
 MAX_OCR_UPSCALE_FACTOR = 3
@@ -91,7 +173,88 @@ OCR_TIME_BUDGET_SECONDS = 4.5
 OCR_CONFIGS = ("--psm 6", "--psm 11")
 ROTATED_WARNING_CONFIGS = ("--psm 6",)
 ROTATED_WARNING_ANGLES = (90, 180, 270)
+WARNING_REGION_RELATIVE_BOXES = (
+    (0.0, 0.0, 0.26, 0.78),
+    (0.0, 0.0, 0.34, 0.9),
+)
+FIELD_REGION_CONFIGS = ("--psm 6",)
+FIELD_REGION_RELATIVE_BOXES = (
+    ("bottom_center", (0.42, 0.84, 0.78, 1.0), 0),
+    ("bottom_right", (0.80, 0.84, 1.0, 1.0), 0),
+    ("left_warning", (0.03, 0.18, 0.19, 0.86), 270),
+)
+FIELD_REGION_TRIGGER_FIELDS = (
+    "alcohol_content",
+    "net_contents",
+    "bottler_address",
+    "government_warning",
+)
+EASYOCR_MIN_REMAINING_SECONDS = 0.75
+EASYOCR_MIN_CONFIDENCE = 0.15
+EASYOCR_TRIGGER_FIELDS = (
+    "brand_name",
+    "class_type",
+    "alcohol_content",
+    "bottler_address",
+    "government_warning",
+)
 MAX_WARNING_SCAN_LINES = 24
+DEFAULT_OCR_MODE = "fallback"
+_EASYOCR_READER = None
+_EASYOCR_UNAVAILABLE = False
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _ocr_mode() -> str:
+    mode = os.getenv("LABEL_VERIFIER_OCR_MODE", DEFAULT_OCR_MODE).strip().lower()
+    if mode in {"strong", "easyocr", "strong-first"}:
+        return "strong"
+    if mode in {"fallback", "tesseract-first"}:
+        return "fallback"
+    if mode in {"tesseract", "tesseract-only"}:
+        return "tesseract"
+
+    return DEFAULT_OCR_MODE
+
+
+def _load_easyocr_reader():
+    global _EASYOCR_READER, _EASYOCR_UNAVAILABLE
+
+    if (
+        not _env_flag("LABEL_VERIFIER_USE_EASYOCR", True)
+        or _ocr_mode() == "tesseract"
+        or _EASYOCR_UNAVAILABLE
+    ):
+        return None
+
+    if _EASYOCR_READER is not None:
+        return _EASYOCR_READER
+
+    try:
+        import easyocr
+    except ImportError:
+        _EASYOCR_UNAVAILABLE = True
+        return None
+
+    try:
+        _EASYOCR_READER = easyocr.Reader(
+            ["en"],
+            gpu=False,
+            verbose=False,
+            download_enabled=_env_flag("LABEL_VERIFIER_EASYOCR_DOWNLOAD", False),
+        )
+    except Exception:
+        _EASYOCR_UNAVAILABLE = True
+        return None
+
+    return _EASYOCR_READER
 
 
 def _resize_for_ocr(image: Image.Image) -> Image.Image:
@@ -143,7 +306,125 @@ def _prepare_image_variants_for_ocr(image: Image.Image) -> list[Image.Image]:
 
 def _prepare_rotated_warning_images_for_ocr(image: Image.Image) -> list[Image.Image]:
     prepared = _prepare_image_for_ocr(image)
-    return [prepared.rotate(angle, expand=True) for angle in ROTATED_WARNING_ANGLES]
+    warning_images = []
+
+    for relative_box in WARNING_REGION_RELATIVE_BOXES:
+        prepared_crop = _prepare_image_for_ocr(_relative_crop(image, relative_box))
+        warning_images.append(prepared_crop.rotate(270, expand=True))
+
+    warning_images.extend(prepared.rotate(angle, expand=True) for angle in ROTATED_WARNING_ANGLES)
+    return warning_images
+
+
+def _is_wide_label(image: Image.Image) -> bool:
+    width, height = image.size
+    return width >= 1000 and height >= 500 and width / height >= 1.6
+
+
+def _relative_crop(image: Image.Image, relative_box: tuple[float, float, float, float]) -> Image.Image:
+    width, height = image.size
+    left, top, right, bottom = relative_box
+    return image.crop(
+        (
+            round(width * left),
+            round(height * top),
+            round(width * right),
+            round(height * bottom),
+        )
+    )
+
+
+def _prepare_field_region_images_for_ocr(image: Image.Image) -> list[Image.Image]:
+    prepared_images = []
+    for _name, relative_box, rotation in FIELD_REGION_RELATIVE_BOXES:
+        prepared = _prepare_image_for_ocr(_relative_crop(image, relative_box))
+        if rotation:
+            prepared = prepared.rotate(rotation, expand=True)
+        prepared_images.append(prepared)
+
+    return prepared_images
+
+
+def _format_easyocr_results(ocr_results) -> str:
+    entries = []
+
+    for index, result in enumerate(ocr_results):
+        if isinstance(result, str):
+            text = result.strip()
+            if text:
+                entries.append((float(index), 0.0, 1.0, text))
+            continue
+
+        if not isinstance(result, (list, tuple)) or len(result) < 2:
+            continue
+
+        bbox = result[0]
+        text = str(result[1]).strip()
+        confidence = result[2] if len(result) >= 3 else 1
+        if not text:
+            continue
+        if confidence is not None and confidence < EASYOCR_MIN_CONFIDENCE:
+            continue
+
+        try:
+            xs = [float(point[0]) for point in bbox]
+            ys = [float(point[1]) for point in bbox]
+        except (TypeError, ValueError, IndexError):
+            entries.append((float(index), 0.0, 1.0, text))
+            continue
+
+        height = max(ys) - min(ys)
+        entries.append((sum(ys) / len(ys), min(xs), max(height, 1.0), text))
+
+    if not entries:
+        return ""
+
+    line_groups: list[dict[str, object]] = []
+    for y_center, x_start, height, text in sorted(entries, key=lambda entry: (entry[0], entry[1])):
+        if line_groups:
+            previous_group = line_groups[-1]
+            tolerance = max(10.0, float(previous_group["height"]), height) * 0.7
+            if abs(y_center - float(previous_group["y"])) <= tolerance:
+                previous_group["items"].append((x_start, text))
+                previous_group["y"] = (float(previous_group["y"]) + y_center) / 2
+                previous_group["height"] = max(float(previous_group["height"]), height)
+                continue
+
+        line_groups.append({"y": y_center, "height": height, "items": [(x_start, text)]})
+
+    lines = []
+    for group in line_groups:
+        words = [text for _x_start, text in sorted(group["items"])]
+        lines.append(" ".join(words))
+
+    return "\n".join(lines)
+
+
+def _extract_text_with_easyocr(image: Image.Image) -> str:
+    reader = _load_easyocr_reader()
+    if reader is None:
+        return ""
+
+    prepared = _resize_for_ocr(image).convert("RGB")
+    try:
+        import numpy as np
+    except ImportError:
+        image_input = prepared
+    else:
+        image_input = np.array(prepared)
+
+    try:
+        ocr_results = reader.readtext(
+            image_input,
+            detail=1,
+            paragraph=False,
+            decoder="greedy",
+            batch_size=1,
+        )
+    except Exception:
+        return ""
+
+    return _format_easyocr_results(ocr_results)
 
 
 def _score_ocr_text(raw_text: str) -> tuple[int, int, int]:
@@ -189,6 +470,44 @@ def _has_government_warning_guess(results: list[str]) -> bool:
     return bool(_guess_government_warning(_merge_ocr_results(results)))
 
 
+def _should_try_field_region_ocr(image: Image.Image, results: list[str], started: float) -> bool:
+    if not _is_wide_label(image):
+        return False
+
+    remaining_seconds = OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started)
+    if remaining_seconds <= 0:
+        return False
+
+    if not results:
+        return True
+
+    guesses = extract_field_guesses(_merge_ocr_results(results))
+    return any(not guesses.get(field) for field in FIELD_REGION_TRIGGER_FIELDS)
+
+
+def _should_try_easyocr_fallback(results: list[str], started: float) -> bool:
+    if _ocr_mode() != "fallback":
+        return False
+
+    remaining_seconds = OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started)
+    if remaining_seconds < EASYOCR_MIN_REMAINING_SECONDS:
+        return False
+
+    if not results:
+        return True
+
+    guesses = extract_field_guesses(_merge_ocr_results(results))
+    return any(not guesses.get(field) for field in EASYOCR_TRIGGER_FIELDS)
+
+
+def _should_try_easyocr_first(started: float) -> bool:
+    if _ocr_mode() != "strong":
+        return False
+
+    remaining_seconds = OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started)
+    return remaining_seconds >= EASYOCR_MIN_REMAINING_SECONDS
+
+
 def _guess_government_warning(raw_text: str) -> str:
     lines = [line.strip() for line in raw_text.splitlines()]
 
@@ -206,7 +525,9 @@ def _guess_government_warning(raw_text: str) -> str:
                 break
 
             if _is_warning_line(next_line):
-                warning_lines.append(next_line)
+                cleaned_warning_line = _clean_warning_line(next_line)
+                if cleaned_warning_line:
+                    warning_lines.append(cleaned_warning_line)
                 skipped_noise = 0
                 continue
 
@@ -238,6 +559,44 @@ def _is_warning_line(line: str) -> bool:
     return re.search(r"^(?:\([12]\)|[12][).])\s*", line.strip()) is not None
 
 
+def _clean_warning_line(line: str) -> str:
+    cleaned = re.sub(r"\s+", " ", line.strip())
+    cleaned = re.sub(r"^[^A-Za-z0-9]*\(?F\s+(ALCOHOLIC\b)", r"OF \1", cleaned, flags=re.IGNORECASE)
+
+    warning_phrase_match = re.search(
+        r"\b(?:GOVERNMENT\s+WARNING|WOMEN\s+SHOULD|PREGNANCY\s*BECAUSE|OF\s+ALCOHOLIC\s+BEVERAGES|OR\s+OPERATE\s+MACHINERY|OPERATE\s+MACHINERY|MAY\s+CAUSE\s+HEALTH\s+PROBLEMS)\b",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if warning_phrase_match is not None and warning_phrase_match.start() > 0:
+        prefix = cleaned[: warning_phrase_match.start()]
+        phrase = warning_phrase_match.group(0)
+        if re.search(r"\bGOVERNMENT\s+WARNING\b", phrase, re.IGNORECASE) or not re.search(
+            r"\b(?:SURGEON|GENERAL|ALCOHOLIC|BEVERAGES|DURING|CONSUMPTION|DRIVE|CAR|OPERATE|MACHINERY)\b",
+            prefix,
+            re.IGNORECASE,
+        ):
+            cleaned = cleaned[warning_phrase_match.start() :]
+            if re.match(r"\bOPERATE\s+MACHINERY\b", cleaned, re.IGNORECASE):
+                cleaned = f"OR {cleaned}"
+
+    may_cause_match = re.search(r"\bMAY\s+CAUSE\s+HEALTH\s+PROBLEMS\.?", cleaned, re.IGNORECASE)
+    prefix_before_may_cause = cleaned[: may_cause_match.start()] if may_cause_match is not None else ""
+    if (
+        may_cause_match is not None
+        and may_cause_match.start() > 0
+        and not re.search(r"\b(?:OR|OPERATE|MACHINERY)\b", prefix_before_may_cause, re.IGNORECASE)
+    ):
+        cleaned = cleaned[may_cause_match.start() :]
+
+    cleaned = re.sub(r"\bPREGNANCY\s*BECAUSE\b", "PREGNANCY BECAUSE", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bDEFECTS\.\s*\(?2\)", "DEFECTS. (2)", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"(\bACCORDING TO)\s+\d+\b$", r"\1", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"(\bDURING)\s+[=~_\-\\/|\s]+[A-Za-z]?$", r"\1", cleaned, flags=re.IGNORECASE)
+
+    return cleaned.strip()
+
+
 def _is_likely_after_warning_field(line: str) -> bool:
     return bool(
         ALCOHOL_CONTENT_PATTERN.search(line)
@@ -248,6 +607,87 @@ def _is_likely_after_warning_field(line: str) -> bool:
 
 def _clean_guess_line(line: str) -> str:
     return re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9.)]+$", "", line.strip())
+
+
+def _clean_multiline_guess(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip())
+
+
+def _normalize_number_text(value: str) -> str:
+    if "." not in value:
+        return str(int(value))
+
+    return value.rstrip("0").rstrip(".")
+
+
+def _clean_net_contents_match(match: re.Match[str]) -> str:
+    amount = match.group("amount")
+    unit = re.sub(r"\s+", " ", match.group("unit").strip())
+
+    if re.fullmatch(r"fl\.?\s*oz\.?", unit, flags=re.IGNORECASE):
+        normalized_amount = _normalize_number_text(amount)
+        if "." not in amount and len(amount) > 2:
+            for common_amount in sorted(COMMON_FLUID_OUNCE_AMOUNTS, key=len, reverse=True):
+                if amount.endswith(common_amount.replace(".", "")):
+                    normalized_amount = common_amount
+                    break
+            if normalized_amount != _normalize_number_text(amount):
+                return f"{normalized_amount} {unit}"
+
+    return match.group(0).strip()
+
+
+def _guess_net_contents(raw_text: str) -> str:
+    net_match = NET_CONTENTS_VALUE_PATTERN.search(raw_text)
+    if net_match is None:
+        return ""
+
+    return _clean_net_contents_match(net_match)
+
+
+def _clean_company_candidate(candidate: str) -> str:
+    cleaned = _clean_multiline_guess(candidate)
+    cleaned = re.sub(r"\bCO[.e0]?\b\.?", "CO.", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip(" ,:;-\"“”")
+
+    words = cleaned.split()
+    while words:
+        leading_word = re.sub(r"[^A-Za-z0-9]", "", words[0]).upper()
+        if leading_word not in COMPANY_LEADING_NOISE_WORDS:
+            break
+        words.pop(0)
+
+    return " ".join(words).strip(" ,:;-\"“”")
+
+
+def _extract_producer_company(value: str) -> str:
+    candidates = []
+    for match in COMPANY_CANDIDATE_PATTERN.finditer(value):
+        candidate = _clean_company_candidate(match.group(1))
+        if _is_weak_company_suffix_fragment(candidate):
+            continue
+        if candidate and BRAND_SUFFIX_PATTERN.search(candidate):
+            candidates.append(candidate)
+
+    return candidates[-1] if candidates else ""
+
+
+def _is_weak_company_suffix_fragment(candidate: str) -> bool:
+    return (
+        re.fullmatch(
+            r"[a-z]{1,3}\.?\s+(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)\.?",
+            candidate.strip(),
+        )
+        is not None
+    )
+
+
+def _producer_from_brewed_canned_address(address: str) -> str:
+    match = re.search(r"\bBY\s+(.+)$", address, re.IGNORECASE)
+    if match is None:
+        return ""
+
+    return _extract_producer_company(match.group(1))
 
 
 def _meaningful_lines(raw_text: str) -> list[str]:
@@ -320,7 +760,9 @@ def _brand_from_bottler_line(raw_text: str) -> str:
         match = re.search(r"\bby\s+(.+?)(?:\s*\||,|\s{2,}|$)", line, re.IGNORECASE)
         if match is None:
             continue
-        candidate = _clean_guess_line(match.group(1))
+        candidate = _extract_producer_company(match.group(1)) or _clean_guess_line(match.group(1))
+        if _is_weak_company_suffix_fragment(candidate):
+            continue
         if BRAND_SUFFIX_PATTERN.search(candidate):
             return candidate.upper() if candidate.isupper() else candidate
 
@@ -329,13 +771,23 @@ def _brand_from_bottler_line(raw_text: str) -> str:
 
 def _guess_brand_name(raw_text: str, class_type_guess: str = "") -> str:
     bottler_brand = _brand_from_bottler_line(raw_text)
+    brewed_canned_brand = _producer_from_brewed_canned_address(_guess_brewed_canned_address(raw_text))
     candidates: list[tuple[int, str]] = []
+
+    if brewed_canned_brand:
+        candidates.append((24, brewed_canned_brand))
 
     if bottler_brand:
         candidates.append((12, bottler_brand))
 
     for line in _meaningful_lines(raw_text):
+        company_candidate = _extract_producer_company(line)
+        if company_candidate:
+            line = company_candidate
+
         if len(line) > 80:
+            continue
+        if _is_weak_company_suffix_fragment(line):
             continue
         if line == class_type_guess:
             continue
@@ -378,14 +830,87 @@ def _guess_country_of_origin(raw_text: str) -> str:
     return ""
 
 
+def _guess_brewed_canned_address(raw_text: str) -> str:
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        match = re.search(
+            r"\b(BREWED\s*(?:&|AND)\s*CANNED\s+IN\s+.+?,\s*[A-Z]{2})\s+BY\b(.*)",
+            line,
+            re.IGNORECASE,
+        )
+        if match is None:
+            continue
+
+        producer = _extract_producer_company(match.group(2))
+        if not producer:
+            for next_line in lines[index + 1 : index + 4]:
+                producer = _extract_producer_company(next_line)
+                if producer:
+                    break
+
+        if producer:
+            location = _clean_multiline_guess(match.group(1))
+            return f"{location} BY {producer}"
+
+    brewed_canned_match = BREWED_CANNED_ADDRESS_PATTERN.search(raw_text)
+    if brewed_canned_match is not None:
+        address = _clean_multiline_guess(brewed_canned_match.group(1))
+        producer = _extract_producer_company(address)
+        if producer:
+            prefix_match = re.search(
+                r"\b(BREWED\s*(?:&|AND)\s*CANNED\s+IN\s+.+?,\s*[A-Z]{2})\s+BY\b",
+                address,
+                re.IGNORECASE,
+            )
+            if prefix_match is not None:
+                return f"{_clean_multiline_guess(prefix_match.group(1))} BY {producer}"
+        return address
+
+    return ""
+
+
+def _guess_bottler_address(raw_text: str) -> str:
+    bottler_match = BOTTLER_ADDRESS_PATTERN.search(raw_text)
+    if bottler_match is not None:
+        return bottler_match.group(0).strip()
+
+    brewed_canned_address = _guess_brewed_canned_address(raw_text)
+    if brewed_canned_address:
+        return brewed_canned_address
+
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        address_match = POSTAL_ADDRESS_PATTERN.search(line)
+        if address_match is None:
+            continue
+
+        address = _clean_guess_line(address_match.group(1))
+        for previous_line in reversed(lines[max(0, index - 3) : index]):
+            company_match = PRODUCER_COMPANY_PATTERN.search(previous_line)
+            if company_match is None:
+                continue
+
+            company = _clean_guess_line(company_match.group(1))
+            return f"{company} {address}"
+
+    return ""
+
+
 def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
     started = time.perf_counter()
     try:
         with Image.open(io.BytesIO(image_bytes)) as image:
-            prepared_images = _prepare_image_variants_for_ocr(image)
             results = []
             last_ocr_error: Exception | None = None
             rotated_warning_attempted = False
+            field_region_attempted = False
+
+            if _should_try_easyocr_first(started):
+                easyocr_text = _extract_text_with_easyocr(image)
+                if easyocr_text.strip():
+                    results.append(easyocr_text)
+
+            prepared_images = _prepare_image_variants_for_ocr(image)
 
             try:
                 for variant_index, prepared_image in enumerate(prepared_images):
@@ -409,6 +934,31 @@ def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
 
                     if OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started) <= 0:
                         break
+
+                    if (
+                        variant_index == 0
+                        and not field_region_attempted
+                        and _should_try_field_region_ocr(image, results, started)
+                    ):
+                        field_region_attempted = True
+                        for prepared_image in _prepare_field_region_images_for_ocr(image):
+                            for config in FIELD_REGION_CONFIGS:
+                                remaining_seconds = OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started)
+                                if remaining_seconds <= 0:
+                                    break
+
+                                try:
+                                    raw_text = pytesseract.image_to_string(
+                                        prepared_image,
+                                        config=config,
+                                        timeout=max(0.5, remaining_seconds),
+                                    )
+                                except (pytesseract.TesseractError, RuntimeError) as exc:
+                                    last_ocr_error = exc
+                                    continue
+
+                                if raw_text.strip():
+                                    results.append(raw_text)
 
                     if (
                         variant_index == 0
@@ -444,6 +994,11 @@ def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
                     "OCR engine is not installed. Install Tesseract or use raw text override."
                 ) from exc
 
+            if _should_try_easyocr_fallback(results, started):
+                easyocr_text = _extract_text_with_easyocr(image)
+                if easyocr_text.strip():
+                    results.append(easyocr_text)
+
             if not results and last_ocr_error is not None:
                 raise ExtractionError("OCR failed while reading the image.") from last_ocr_error
     except (UnidentifiedImageError, OSError) as exc:
@@ -456,18 +1011,146 @@ def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
     return cleaned, round((time.perf_counter() - started) * 1000)
 
 
-def extract_field_guesses(raw_text: str) -> dict[str, str]:
-    alcohol_match = ALCOHOL_CONTENT_PATTERN.search(raw_text)
-    net_match = NET_CONTENTS_PATTERN.search(raw_text)
-    bottler_match = BOTTLER_ADDRESS_PATTERN.search(raw_text)
-    class_type_guess = _guess_class_type(raw_text)
+def _field_candidate(
+    field: str,
+    value: str,
+    source: str,
+    confidence: float,
+    raw_text: str = "",
+) -> FieldCandidate | None:
+    cleaned_value = value.strip()
+    if not cleaned_value:
+        return None
 
-    return {
-        "brand_name": _guess_brand_name(raw_text, class_type_guess),
-        "class_type": class_type_guess,
-        "alcohol_content": alcohol_match.group(0).strip() if alcohol_match else "",
-        "net_contents": net_match.group(0).strip() if net_match else "",
-        "bottler_address": bottler_match.group(0).strip() if bottler_match else "",
-        "country_of_origin": _guess_country_of_origin(raw_text),
-        "government_warning": _guess_government_warning(raw_text),
-    }
+    return FieldCandidate(
+        field=field,
+        value=cleaned_value,
+        source=source,
+        confidence=max(0.0, min(confidence, 1.0)),
+        raw_text=raw_text.strip() or cleaned_value,
+    )
+
+
+def _append_candidate(
+    candidates: dict[str, list[FieldCandidate]],
+    field: str,
+    value: str,
+    source: str,
+    confidence: float,
+    raw_text: str = "",
+) -> None:
+    candidate = _field_candidate(field, value, source, confidence, raw_text)
+    if candidate is not None:
+        candidates[field].append(candidate)
+
+
+def _alcohol_content_confidence(value: str) -> float:
+    if re.search(r"\b(?:proof|by\s+vol(?:ume)?|/\s*vol|alcohol\s+volume)\b", value, re.IGNORECASE):
+        return 0.92
+
+    return 0.84
+
+
+def _net_contents_confidence(value: str, raw_value: str) -> float:
+    if value != raw_value.strip():
+        return 0.72
+
+    if re.fullmatch(r"\d+(?:\.\d+)?\s*(?:mL|fl\.?\s*oz\.?|L|pints?)\.?", value, re.IGNORECASE):
+        return 0.9
+
+    return 0.8
+
+
+def _class_type_confidence(raw_text: str, value: str) -> float:
+    if any(pattern.search(raw_text) and canonical_type == value for pattern, canonical_type in ALCOHOL_TYPE_PATTERNS):
+        return 0.88
+
+    return 0.66
+
+
+def extract_field_candidates(raw_text: str) -> dict[str, list[FieldCandidate]]:
+    class_type_guess = _guess_class_type(raw_text)
+    candidates: dict[str, list[FieldCandidate]] = {field: [] for field in EXTRACTED_FIELDS}
+
+    _append_candidate(
+        candidates,
+        "brand_name",
+        _guess_brand_name(raw_text, class_type_guess),
+        "brand_name_heuristic",
+        0.78,
+    )
+    _append_candidate(
+        candidates,
+        "class_type",
+        class_type_guess,
+        "class_type_pattern",
+        _class_type_confidence(raw_text, class_type_guess) if class_type_guess else 0,
+    )
+
+    for match in ALCOHOL_CONTENT_PATTERN.finditer(raw_text):
+        value = match.group(0).strip()
+        _append_candidate(
+            candidates,
+            "alcohol_content",
+            value,
+            "alcohol_content_pattern",
+            _alcohol_content_confidence(value),
+            value,
+        )
+
+    for match in NET_CONTENTS_VALUE_PATTERN.finditer(raw_text):
+        raw_value = match.group(0).strip()
+        value = _clean_net_contents_match(match)
+        _append_candidate(
+            candidates,
+            "net_contents",
+            value,
+            "net_contents_pattern",
+            _net_contents_confidence(value, raw_value),
+            raw_value,
+        )
+
+    _append_candidate(
+        candidates,
+        "bottler_address",
+        _guess_bottler_address(raw_text),
+        "bottler_address_pattern",
+        0.82,
+    )
+    _append_candidate(
+        candidates,
+        "country_of_origin",
+        _guess_country_of_origin(raw_text),
+        "country_of_origin_pattern",
+        0.86,
+    )
+    _append_candidate(
+        candidates,
+        "government_warning",
+        _guess_government_warning(raw_text),
+        "government_warning_block",
+        0.84,
+    )
+
+    return candidates
+
+
+def select_field_guesses(candidates: dict[str, list[FieldCandidate]]) -> dict[str, str]:
+    guesses = {field: "" for field in EXTRACTED_FIELDS}
+
+    for field in guesses:
+        field_candidates = candidates.get(field, [])
+        if not field_candidates:
+            continue
+
+        _index, selected = max(
+            enumerate(field_candidates),
+            key=lambda item: (item[1].confidence, -item[0]),
+        )
+        guesses[field] = selected.value
+
+    return guesses
+
+
+def extract_field_guesses(raw_text: str) -> dict[str, str]:
+    return select_field_guesses(extract_field_candidates(raw_text))

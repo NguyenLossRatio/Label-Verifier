@@ -43,6 +43,10 @@ def test_verify_endpoint_accepts_raw_text_override():
     assert body["field_results"]["brand_name"]["status"] == "pass"
     assert body["extraction_ms"] == 0
     assert body["field_guesses"]["alcohol_content"] == "45% Alc./Vol. (90 Proof)"
+    alcohol_candidates = body["field_candidates"]["alcohol_content"]
+    assert alcohol_candidates[0]["value"] == "45% Alc./Vol. (90 Proof)"
+    assert alcohol_candidates[0]["source"] == "alcohol_content_pattern"
+    assert 0 < alcohol_candidates[0]["confidence"] <= 1
 
 
 def test_verify_endpoint_accepts_blank_expected_fields_for_testing():

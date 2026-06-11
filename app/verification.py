@@ -2,6 +2,7 @@ import re
 import string
 import time
 
+from app.extraction import NET_CONTENTS_VALUE_PATTERN, _clean_net_contents_match
 from app.models import ExpectedFields, FieldResult, FieldStatus, VerificationReport
 
 
@@ -50,6 +51,39 @@ def _find_phrase_match(raw_text: str, expected: str) -> str | None:
 
 def _find_value_match(raw_text: str, expected: str) -> str | None:
     return _find_phrase_match(raw_text, expected)
+
+
+def _compact_value(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def _find_net_contents_match(raw_text: str, expected: str) -> str | None:
+    if not expected.strip():
+        return ""
+
+    compact_expected = _compact_value(expected)
+    pattern = rf"(?<![a-z0-9]){re.escape(compact_expected)}(?![a-z0-9])"
+    lines = [line.strip() for line in raw_text.splitlines()]
+
+    for match in NET_CONTENTS_VALUE_PATTERN.finditer(raw_text):
+        matched_value = _clean_net_contents_match(match)
+        if _compact_value(matched_value) == compact_expected:
+            return matched_value
+
+    for stripped in lines:
+        if stripped and re.search(pattern, _compact_value(stripped)):
+            return stripped
+
+    for index in range(len(lines)):
+        for window_size in (2, 3):
+            chunk_lines = [line for line in lines[index : index + window_size] if line]
+            if len(chunk_lines) < window_size:
+                continue
+            chunk = " ".join(chunk_lines)
+            if re.search(pattern, _compact_value(chunk)):
+                return chunk
+
+    return None
 
 
 def _find_warning_like_segment(raw_text: str, expected_warning: str) -> str | None:
@@ -138,11 +172,17 @@ def _verify_expected_phrase(field: str, expected: str, raw_text: str, extracted_
     )
 
 
-def _verify_expected_value(field: str, expected: str, raw_text: str, extracted_guess: str = "") -> FieldResult:
+def _verify_expected_value(
+    field: str,
+    expected: str,
+    raw_text: str,
+    extracted_guess: str = "",
+    value_matcher=_find_value_match,
+) -> FieldResult:
     if not expected.strip():
         return _blank_expected_result(field, expected, extracted_guess)
 
-    match = _find_value_match(raw_text, expected)
+    match = value_matcher(raw_text, expected)
     return _result(
         field,
         expected,
@@ -270,7 +310,11 @@ def verify_label_text(
         "alcohol_content", expected.alcohol_content, raw_text, field_guesses.get("alcohol_content", "")
     )
     field_results["net_contents"] = _verify_expected_value(
-        "net_contents", expected.net_contents, raw_text, field_guesses.get("net_contents", "")
+        "net_contents",
+        expected.net_contents,
+        raw_text,
+        field_guesses.get("net_contents", ""),
+        value_matcher=_find_net_contents_match,
     )
     field_results["bottler_address"] = _verify_expected_phrase(
         "bottler_address", expected.bottler_address, raw_text, field_guesses.get("bottler_address", "")

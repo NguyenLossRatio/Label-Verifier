@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 FieldStatus = Literal["pass", "mismatch", "missing", "needs_review", "unreadable"]
 OverallStatus = Literal["pass", "needs_review", "unreadable"]
@@ -32,6 +32,15 @@ class VerificationReport(BaseModel):
     processing_ms: int
 
 
+class FieldCandidateModel(BaseModel):
+    field: str
+    value: str
+    source: str
+    confidence: float
+    raw_text: str
+
+
 class VerifyResponse(VerificationReport):
     extraction_ms: int
     field_guesses: dict[str, str]
+    field_candidates: dict[str, list[FieldCandidateModel]] = Field(default_factory=dict)

@@ -16,6 +16,9 @@ dev = [
   "pytest>=8.2.0",
   "httpx>=0.27.0"
 ]
+strong-ocr = [
+  "easyocr>=1.7.2"
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

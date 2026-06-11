@@ -6,7 +6,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from app.extraction import ExtractionError, extract_field_guesses, extract_text_from_image
+from app.extraction import (
+    ExtractionError,
+    extract_field_candidates,
+    extract_text_from_image,
+    select_field_guesses,
+)
 from app.models import ExpectedFields, VerifyResponse
 from app.verification import verify_label_text
 
@@ -67,10 +72,15 @@ async def verify(
     else:
         raise HTTPException(status_code=400, detail="Upload a label image or provide raw extracted text.")
 
-    field_guesses = extract_field_guesses(raw_text)
+    field_candidates = extract_field_candidates(raw_text)
+    field_guesses = select_field_guesses(field_candidates)
     report = verify_label_text(expected, raw_text, field_guesses=field_guesses)
     return VerifyResponse(
         **report.model_dump(),
         extraction_ms=extraction_ms,
         field_guesses=field_guesses,
+        field_candidates={
+            field: [candidate.__dict__ for candidate in candidates]
+            for field, candidates in field_candidates.items()
+        },
     )
