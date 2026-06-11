@@ -42,6 +42,17 @@ def test_brand_name_allows_capitalization_and_punctuation_differences():
     assert report.overall_status == "pass"
 
 
+def test_brand_name_treats_ampersand_as_and():
+    report = verify_label_text(
+        expected_fields(brand_name="Malt and Hop Brewery"),
+        "Malt & Hop Brewery\nKentucky Straight Bourbon Whiskey\n45% Alc./Vol. (90 Proof)\n750 ml\nOld Tom Distillery, Louisville, KY\n" + STANDARD_WARNING,
+    )
+
+    brand = report.field_results["brand_name"]
+    assert brand.status == "pass"
+    assert report.overall_status == "pass"
+
+
 @pytest.mark.parametrize(
     "field",
     [

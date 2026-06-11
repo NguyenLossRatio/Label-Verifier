@@ -18,6 +18,7 @@ FIELD_LABELS = {
 
 def normalize_text(value: str) -> str:
     lowered = value.lower()
+    lowered = re.sub(r"\s*(?:&|\+)\s*", " and ", lowered)
     no_punctuation = lowered.translate(str.maketrans("", "", string.punctuation))
     return re.sub(r"\s+", " ", no_punctuation).strip()
 

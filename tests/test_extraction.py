@@ -141,7 +141,17 @@ def test_extract_text_from_image_tries_bounded_page_segmentation_modes_across_pr
 
     extract_text_from_image(patterned_png_bytes())
 
-    assert configs == ["--psm 6", "--psm 11", "--psm 6", "--psm 11", "--psm 6", "--psm 11"]
+    assert configs == [
+        "--psm 6",
+        "--psm 11",
+        "--psm 6",
+        "--psm 6",
+        "--psm 6",
+        "--psm 6",
+        "--psm 11",
+        "--psm 6",
+        "--psm 11",
+    ]
     assert len(set(image_variants)) >= 3
 
 
@@ -212,6 +222,42 @@ def test_extract_text_from_image_keeps_longer_line_with_extra_field_data(monkeyp
     text, _ = extract_text_from_image(png_bytes())
 
     assert "OVER AND OVER 12 FL OZ" in text
+
+
+def test_extract_text_from_image_tries_rotated_warning_pass_when_warning_is_missing(monkeypatch):
+    calls = []
+
+    def return_warning_on_rotated_pass(image, **kwargs):
+        calls.append((image.size, kwargs["config"]))
+        if image.size[0] > image.size[1]:
+            return "GOVERNMENT WARNING:\n(1) ACCORDING TO THE SURGEON GENERAL"
+        return "ORPHEUS BREWING\n12 FL. OZ\nPINEAPPLE SOUR ALE"
+
+    monkeypatch.setattr(pytesseract, "image_to_string", return_warning_on_rotated_pass)
+
+    text, _ = extract_text_from_image(sized_png_bytes((400, 800)))
+
+    assert "ORPHEUS BREWING" in text
+    assert "GOVERNMENT WARNING:" in text
+    first_rotated_call = next(index for index, (size, _config) in enumerate(calls) if size[0] > size[1])
+    assert first_rotated_call == 2
+
+
+def test_extract_text_from_image_ignores_rotated_warning_timeout_when_normal_text_exists(monkeypatch):
+    calls = []
+
+    def timeout_on_rotated_pass(image, **kwargs):
+        calls.append(kwargs["config"])
+        if len(calls) <= 6:
+            return "ORPHEUS BREWING\n12 FL. OZ\nPINEAPPLE SOUR ALE"
+        raise RuntimeError("Tesseract process timeout")
+
+    monkeypatch.setattr(pytesseract, "image_to_string", timeout_on_rotated_pass)
+
+    text, _ = extract_text_from_image(png_bytes())
+
+    assert "ORPHEUS BREWING" in text
+    assert "PINEAPPLE SOUR ALE" in text
 
 
 def test_extract_field_guesses_handles_uppercase_net_contents_unit():
@@ -328,6 +374,21 @@ def test_extract_field_guesses_does_not_cut_off_long_noisy_warning_block():
     assert "HEALTH PROBLEMS." in guesses["government_warning"]
     assert "CONTAINS: SULFITES" not in guesses["government_warning"]
     assert "1 PINT" not in guesses["government_warning"]
+
+
+def test_extract_field_guesses_does_not_treat_numeric_noise_as_warning_line():
+    raw_text = (
+        "GOVERNMENT WARNING:\n"
+        "(1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES\n"
+        "(2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR\n"
+        "AND MAY CAUSE HEALTH PROBLEMS.\n"
+        "2 B5ou8be"
+    )
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert "HEALTH PROBLEMS." in guesses["government_warning"]
+    assert "2 B5ou8be" not in guesses["government_warning"]
 
 
 def test_extract_field_guesses_detects_brand_after_producer_line():

@@ -89,6 +89,8 @@ MIN_OCR_IMAGE_DIMENSION = 1400
 MAX_OCR_UPSCALE_FACTOR = 3
 OCR_TIME_BUDGET_SECONDS = 4.5
 OCR_CONFIGS = ("--psm 6", "--psm 11")
+ROTATED_WARNING_CONFIGS = ("--psm 6",)
+ROTATED_WARNING_ANGLES = (90, 180, 270)
 MAX_WARNING_SCAN_LINES = 24
 
 
@@ -139,6 +141,11 @@ def _prepare_image_variants_for_ocr(image: Image.Image) -> list[Image.Image]:
     return [standard, soft, threshold]
 
 
+def _prepare_rotated_warning_images_for_ocr(image: Image.Image) -> list[Image.Image]:
+    prepared = _prepare_image_for_ocr(image)
+    return [prepared.rotate(angle, expand=True) for angle in ROTATED_WARNING_ANGLES]
+
+
 def _score_ocr_text(raw_text: str) -> tuple[int, int, int]:
     cleaned = raw_text.strip()
     guesses = extract_field_guesses(cleaned)
@@ -173,6 +180,13 @@ def _merge_ocr_results(results: list[str]) -> str:
             merged_lines.append(stripped)
 
     return "\n".join(merged_lines)
+
+
+def _has_government_warning_guess(results: list[str]) -> bool:
+    if not results:
+        return False
+
+    return bool(_guess_government_warning(_merge_ocr_results(results)))
 
 
 def _guess_government_warning(raw_text: str) -> str:
@@ -221,7 +235,7 @@ def _is_warning_line(line: str) -> bool:
     if WARNING_BODY_PATTERN.search(line):
         return True
 
-    return re.search(r"^\(?[12]\)?", line.strip()) is not None
+    return re.search(r"^(?:\([12]\)|[12][).])\s*", line.strip()) is not None
 
 
 def _is_likely_after_warning_field(line: str) -> bool:
@@ -370,10 +384,11 @@ def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
         with Image.open(io.BytesIO(image_bytes)) as image:
             prepared_images = _prepare_image_variants_for_ocr(image)
             results = []
-            last_ocr_error: pytesseract.TesseractError | None = None
+            last_ocr_error: Exception | None = None
+            rotated_warning_attempted = False
 
             try:
-                for prepared_image in prepared_images:
+                for variant_index, prepared_image in enumerate(prepared_images):
                     for config in OCR_CONFIGS:
                         remaining_seconds = OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started)
                         if remaining_seconds <= 0:
@@ -385,7 +400,7 @@ def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
                                 config=config,
                                 timeout=max(0.5, remaining_seconds),
                             )
-                        except pytesseract.TesseractError as exc:
+                        except (pytesseract.TesseractError, RuntimeError) as exc:
                             last_ocr_error = exc
                             continue
 
@@ -394,6 +409,36 @@ def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
 
                     if OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started) <= 0:
                         break
+
+                    if (
+                        variant_index == 0
+                        and not rotated_warning_attempted
+                        and not _has_government_warning_guess(results)
+                    ):
+                        rotated_warning_attempted = True
+                        for prepared_image in _prepare_rotated_warning_images_for_ocr(image):
+                            for config in ROTATED_WARNING_CONFIGS:
+                                remaining_seconds = OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started)
+                                if remaining_seconds <= 0:
+                                    break
+
+                                try:
+                                    raw_text = pytesseract.image_to_string(
+                                        prepared_image,
+                                        config=config,
+                                        timeout=max(0.5, remaining_seconds),
+                                    )
+                                except (pytesseract.TesseractError, RuntimeError) as exc:
+                                    last_ocr_error = exc
+                                    continue
+
+                                if raw_text.strip():
+                                    results.append(raw_text)
+                                    if _guess_government_warning(raw_text):
+                                        break
+
+                            if _has_government_warning_guess(results):
+                                break
             except pytesseract.TesseractNotFoundError as exc:
                 raise ExtractionError(
                     "OCR engine is not installed. Install Tesseract or use raw text override."
