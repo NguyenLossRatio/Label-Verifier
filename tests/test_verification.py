@@ -135,6 +135,26 @@ def test_mismatched_expected_field_reports_detected_guess_when_available():
     assert net_contents.extracted == "1 PINT"
 
 
+def test_bottler_address_can_match_structured_extracted_guess_when_raw_ocr_is_noisy():
+    extracted_guess = "BELTLINE BREWING, LLC. 1440 Dutch Valley PI NE, Atlanta, GA 30324"
+    raw_text = (
+        "ORPHEUS BREWING\n"
+        "OREW Ele =m: BELTLINE BREWING, LLC.\n"
+        "snnS = 1440 Dutch Valley PI NE, Atlanta, GA 30324\n"
+        + STANDARD_WARNING
+    )
+
+    report = verify_label_text(
+        expected_fields(bottler_address=extracted_guess),
+        raw_text,
+        field_guesses={"bottler_address": extracted_guess},
+    )
+
+    bottler_address = report.field_results["bottler_address"]
+    assert bottler_address.status == "pass"
+    assert bottler_address.extracted == extracted_guess
+
+
 def test_blank_country_reports_detected_guess_for_testing():
     report = verify_label_text(
         expected_fields(country_of_origin=""),

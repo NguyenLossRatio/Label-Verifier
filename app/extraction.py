@@ -62,6 +62,14 @@ POSTAL_ADDRESS_PATTERN = re.compile(
     r"\b(\d{2,6}\s+.+?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)\b",
     re.IGNORECASE,
 )
+CITY_STATE_PATTERN = re.compile(
+    r"\b([A-Z][A-Za-z .'-]{1,50},\s*[A-Z]{2})\b",
+    re.IGNORECASE,
+)
+FULL_STATE_CITY_PATTERN = re.compile(
+    r"\b([A-Z][A-Za-z .'-]{1,50},\s*(?:Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming|District of Columbia))\b",
+    re.IGNORECASE,
+)
 GOVERNMENT_WARNING_LABEL_PATTERN = re.compile(r"\bgovernment\s+warning\b", re.IGNORECASE)
 OCR_WARNING_LABEL_PATTERN = re.compile(
     r"\b(?:gov(?:ern|em)ment|rnment)\b.*\bwarn(?:ing)?\b|\bwarn(?:ing)?\b.*\b(?:gov(?:ern|em)ment|rnment)\b",
@@ -121,7 +129,7 @@ BRAND_SUFFIX_PATTERN = re.compile(r"\b(?:brewing|brewery|distillery|estate|winer
 COMPANY_CANDIDATE_PATTERN = re.compile(
     r"\b((?:(?:[A-Z][A-Za-z0-9'.,-]*|&)\s+){0,8}"
     r"(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)"
-    r"(?:\s+(?:LLC|INC|CO[.e0]?|COMPANY))?\.?)",
+    r"(?:,?\s*(?:LLC|INC|CO[.e0]?|COMPANY))?\.?)",
     re.IGNORECASE,
 )
 GENERIC_BRAND_LABELS = {
@@ -166,6 +174,112 @@ COMMON_FLUID_OUNCE_AMOUNTS = (
     "40",
     "64",
 )
+US_STATE_CODES = {
+    "AL",
+    "AK",
+    "AZ",
+    "AR",
+    "CA",
+    "CO",
+    "CT",
+    "DE",
+    "FL",
+    "GA",
+    "HI",
+    "ID",
+    "IL",
+    "IN",
+    "IA",
+    "KS",
+    "KY",
+    "LA",
+    "ME",
+    "MD",
+    "MA",
+    "MI",
+    "MN",
+    "MS",
+    "MO",
+    "MT",
+    "NE",
+    "NV",
+    "NH",
+    "NJ",
+    "NM",
+    "NY",
+    "NC",
+    "ND",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VT",
+    "VA",
+    "WA",
+    "WV",
+    "WI",
+    "WY",
+    "DC",
+}
+US_STATE_NAMES = {
+    "ALABAMA",
+    "ALASKA",
+    "ARIZONA",
+    "ARKANSAS",
+    "CALIFORNIA",
+    "COLORADO",
+    "CONNECTICUT",
+    "DELAWARE",
+    "FLORIDA",
+    "GEORGIA",
+    "HAWAII",
+    "IDAHO",
+    "ILLINOIS",
+    "INDIANA",
+    "IOWA",
+    "KANSAS",
+    "KENTUCKY",
+    "LOUISIANA",
+    "MAINE",
+    "MARYLAND",
+    "MASSACHUSETTS",
+    "MICHIGAN",
+    "MINNESOTA",
+    "MISSISSIPPI",
+    "MISSOURI",
+    "MONTANA",
+    "NEBRASKA",
+    "NEVADA",
+    "NEW HAMPSHIRE",
+    "NEW JERSEY",
+    "NEW MEXICO",
+    "NEW YORK",
+    "NORTH CAROLINA",
+    "NORTH DAKOTA",
+    "OHIO",
+    "OKLAHOMA",
+    "OREGON",
+    "PENNSYLVANIA",
+    "RHODE ISLAND",
+    "SOUTH CAROLINA",
+    "SOUTH DAKOTA",
+    "TENNESSEE",
+    "TEXAS",
+    "UTAH",
+    "VERMONT",
+    "VIRGINIA",
+    "WASHINGTON",
+    "WEST VIRGINIA",
+    "WISCONSIN",
+    "WYOMING",
+    "DISTRICT OF COLUMBIA",
+}
 MAX_OCR_IMAGE_DIMENSION = 2200
 MIN_OCR_IMAGE_DIMENSION = 1400
 MAX_OCR_UPSCALE_FACTOR = 3
@@ -179,6 +293,7 @@ WARNING_REGION_RELATIVE_BOXES = (
 )
 FIELD_REGION_CONFIGS = ("--psm 6",)
 FIELD_REGION_RELATIVE_BOXES = (
+    ("center_address", (0.49, 0.12, 0.60, 0.64), 270),
     ("bottom_center", (0.42, 0.84, 0.78, 1.0), 0),
     ("bottom_right", (0.80, 0.84, 1.0, 1.0), 0),
     ("left_warning", (0.03, 0.18, 0.19, 0.86), 270),
@@ -613,6 +728,13 @@ def _clean_multiline_guess(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
 
+def _clean_address_guess(value: str) -> str:
+    cleaned = re.sub(r"\s*\|\s*", ", ", value.strip())
+    cleaned = _clean_multiline_guess(cleaned)
+    cleaned = re.sub(r"\s*,\s*,\s*", ", ", cleaned)
+    return cleaned.strip(" ,:;-\"“”")
+
+
 def _normalize_number_text(value: str) -> str:
     if "." not in value:
         return str(int(value))
@@ -649,6 +771,7 @@ def _clean_company_candidate(candidate: str) -> str:
     cleaned = _clean_multiline_guess(candidate)
     cleaned = re.sub(r"\bCO[.e0]?\b\.?", "CO.", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.strip(" ,:;-\"“”")
+    cleaned = re.sub(r"(\bCO\.)\s*,?\s+[A-Za-z]$", r"\1", cleaned, flags=re.IGNORECASE)
 
     words = cleaned.split()
     while words:
@@ -830,6 +953,82 @@ def _guess_country_of_origin(raw_text: str) -> str:
     return ""
 
 
+def _is_potential_name_component(line: str) -> bool:
+    if len(line) > 80:
+        return False
+    if _is_weak_company_suffix_fragment(line):
+        return False
+    if _normalize_ocr_line(line) in GENERIC_BRAND_LABELS:
+        return False
+    if BRAND_EXCLUSION_PATTERN.search(line):
+        return False
+    if CLASS_TYPE_PATTERN.search(line):
+        return False
+    if ALCOHOL_CONTENT_PATTERN.search(line) or NET_CONTENTS_PATTERN.search(line):
+        return False
+    if CITY_STATE_PATTERN.search(line) or FULL_STATE_CITY_PATTERN.search(line) or POSTAL_ADDRESS_PATTERN.search(line):
+        return False
+
+    letters = [char for char in line if char.isalpha()]
+    if len(letters) < 4:
+        return False
+
+    words = re.findall(r"[A-Za-z0-9']+", line)
+    return 1 <= len(words) <= 6
+
+
+def _extract_city_state(line: str) -> str:
+    full_state_match = FULL_STATE_CITY_PATTERN.search(line)
+    if full_state_match is not None:
+        state = full_state_match.group(1).rsplit(",", 1)[1].strip().upper()
+        if state in US_STATE_NAMES:
+            return _clean_address_guess(full_state_match.group(1))
+
+    match = CITY_STATE_PATTERN.search(line)
+    if match is None:
+        return ""
+
+    state = match.group(1).rsplit(",", 1)[1].strip().upper()
+    if state not in US_STATE_CODES:
+        return ""
+
+    return _clean_address_guess(match.group(1))
+
+
+def _producer_name_component(line: str) -> str:
+    company = _extract_producer_company(line)
+    if company:
+        return company
+
+    cleaned = _clean_guess_line(line)
+    return cleaned if _is_potential_name_component(cleaned) else ""
+
+
+def _dedupe_address_candidates(
+    candidates: list[tuple[str, str, float]],
+) -> list[tuple[str, str, float]]:
+    deduped = []
+    seen = set()
+    for value, source, confidence in candidates:
+        normalized = _normalize_ocr_line(value)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append((value, source, confidence))
+
+    return deduped
+
+
+def _address_name_location_separator(company: str, has_postal_address: bool) -> str:
+    if has_postal_address:
+        return " "
+
+    if re.search(r"\b(?:CO\.|LLC\.?|INC\.?|COMPANY)\.?$", company, re.IGNORECASE):
+        return " "
+
+    return ", "
+
+
 def _guess_brewed_canned_address(raw_text: str) -> str:
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     for index, line in enumerate(lines):
@@ -869,29 +1068,48 @@ def _guess_brewed_canned_address(raw_text: str) -> str:
     return ""
 
 
-def _guess_bottler_address(raw_text: str) -> str:
+def _bottler_address_candidates(raw_text: str) -> list[tuple[str, str, float]]:
+    candidates: list[tuple[str, str, float]] = []
+
     bottler_match = BOTTLER_ADDRESS_PATTERN.search(raw_text)
     if bottler_match is not None:
-        return bottler_match.group(0).strip()
+        candidates.append(
+            (
+                _clean_address_guess(bottler_match.group(0)),
+                "bottler_address_pattern",
+                0.9,
+            )
+        )
 
     brewed_canned_address = _guess_brewed_canned_address(raw_text)
     if brewed_canned_address:
-        return brewed_canned_address
+        candidates.append((brewed_canned_address, "brewed_canned_address", 0.88))
 
     lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     for index, line in enumerate(lines):
         address_match = POSTAL_ADDRESS_PATTERN.search(line)
-        if address_match is None:
+        city_state = _extract_city_state(line)
+        if address_match is None and not city_state:
             continue
 
-        address = _clean_guess_line(address_match.group(1))
+        address = _clean_address_guess(address_match.group(1) if address_match is not None else city_state)
         for previous_line in reversed(lines[max(0, index - 3) : index]):
-            company_match = PRODUCER_COMPANY_PATTERN.search(previous_line)
-            if company_match is None:
+            company = _producer_name_component(previous_line)
+            if not company:
                 continue
 
-            company = _clean_guess_line(company_match.group(1))
-            return f"{company} {address}"
+            separator = _address_name_location_separator(company, address_match is not None)
+            source = "nearby_name_postal_address" if address_match is not None else "nearby_name_city_state"
+            confidence = 0.84 if address_match is not None else 0.74
+            candidates.append((f"{company}{separator}{address}", source, confidence))
+            break
+
+    return _dedupe_address_candidates(candidates)
+
+
+def _guess_bottler_address(raw_text: str) -> str:
+    candidates = _bottler_address_candidates(raw_text)
+    return max(candidates, key=lambda candidate: candidate[2])[0] if candidates else ""
 
     return ""
 
@@ -1110,13 +1328,15 @@ def extract_field_candidates(raw_text: str) -> dict[str, list[FieldCandidate]]:
             raw_value,
         )
 
-    _append_candidate(
-        candidates,
-        "bottler_address",
-        _guess_bottler_address(raw_text),
-        "bottler_address_pattern",
-        0.82,
-    )
+    for value, source, confidence in _bottler_address_candidates(raw_text):
+        _append_candidate(
+            candidates,
+            "bottler_address",
+            value,
+            source,
+            confidence,
+            value,
+        )
     _append_candidate(
         candidates,
         "country_of_origin",

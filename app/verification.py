@@ -49,6 +49,18 @@ def _find_phrase_match(raw_text: str, expected: str) -> str | None:
     return None
 
 
+def _find_extracted_phrase_match(extracted_guess: str, expected: str) -> str | None:
+    if not extracted_guess.strip() or not expected.strip():
+        return None
+
+    normalized_guess = normalize_text(extracted_guess)
+    normalized_expected = normalize_text(expected)
+    if normalized_guess == normalized_expected or _has_boundary_match(normalized_guess, normalized_expected):
+        return extracted_guess
+
+    return None
+
+
 def _find_value_match(raw_text: str, expected: str) -> str | None:
     return _find_phrase_match(raw_text, expected)
 
@@ -163,6 +175,8 @@ def _verify_expected_phrase(field: str, expected: str, raw_text: str, extracted_
         return _blank_expected_result(field, expected, extracted_guess)
 
     match = _find_phrase_match(raw_text, expected)
+    if match is None:
+        match = _find_extracted_phrase_match(extracted_guess, expected)
     return _result(
         field,
         expected,

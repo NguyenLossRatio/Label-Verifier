@@ -422,6 +422,22 @@ def test_extract_text_from_image_uses_field_region_crops_for_missing_fields(monk
     assert "GOVERNMENT WARNING:" in text
 
 
+def test_extract_text_from_image_uses_center_rotated_crop_for_vertical_address(monkeypatch):
+    def return_by_region(image, **kwargs):
+        width, height = image.size
+        if 1000 <= width <= 1200 and 350 <= height <= 450:
+            return "BELTLINE BREWING, LLC.\n1440 Dutch Valley PI NE, Atlanta, GA 30324"
+        return "ORPHEUS BREWING\nOVER AND OVER\n12 FL.OZ. 4% ALC/VOL"
+
+    monkeypatch.setattr(pytesseract, "image_to_string", return_by_region)
+
+    text, _ = extract_text_from_image(sized_png_bytes((1200, 700)))
+    guesses = extract_field_guesses(text)
+
+    assert "BELTLINE BREWING, LLC." in text
+    assert guesses["bottler_address"] == "BELTLINE BREWING, LLC. 1440 Dutch Valley PI NE, Atlanta, GA 30324"
+
+
 def test_extract_field_guesses_handles_uppercase_net_contents_unit():
     guesses = extract_field_guesses("Kentucky Straight Bourbon Whiskey\n750 ML")
 
@@ -748,6 +764,75 @@ def test_extract_field_guesses_prefers_clean_brand_over_weak_brewery_fragment():
     guesses = extract_field_guesses(raw_text)
 
     assert guesses["brand_name"] == "Malt & Hop"
+
+
+def test_extract_field_guesses_builds_bottler_address_from_nearby_brand_and_city_state():
+    raw_text = """
+    aan BREWERY
+    Malt & Hop
+    Hyattsville, MD
+    12 FL. OZ.
+    """
+
+    guesses = extract_field_guesses(raw_text)
+    candidates = extract_field_candidates(raw_text)
+
+    assert guesses["brand_name"] == "Malt & Hop"
+    assert guesses["bottler_address"] == "Malt & Hop, Hyattsville, MD"
+    assert any(
+        candidate.source == "nearby_name_city_state"
+        for candidate in candidates["bottler_address"]
+    )
+
+
+def test_extract_field_guesses_builds_bottler_address_with_full_state_name():
+    raw_text = """
+    ODELL BREWING CO.
+    Fort Collins, COLORADO
+    12 FL. OZ.
+    """
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert guesses["bottler_address"] == "ODELL BREWING CO. Fort Collins, COLORADO"
+
+
+def test_extract_field_guesses_builds_bottler_address_from_noisy_full_state_ocr():
+    raw_text = """
+    == ODELL BREWING Co, a
+    ——— —_ Fort Coins, COLORADO BW me
+    MEYER LEMON BLONDE
+    """
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert guesses["bottler_address"] == "ODELL BREWING CO. Fort Coins, COLORADO"
+
+
+def test_extract_field_guesses_ignores_invalid_state_like_address_noise():
+    raw_text = """
+    Malt & Hop
+    have been lost to time, so
+    12 FL. OZ.
+    """
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert guesses["bottler_address"] == ""
+
+
+def test_extract_field_guesses_prefers_postal_address_over_noisy_city_state_candidate():
+    raw_text = """
+    ZSaesira<=z, have been lost to time, so
+    ORPHEUS BREWING
+    OREW Ele =m: BELTLINE BREWING, LLC.
+    snnS = 1440 Dutch Valley PI NE, Atlanta, GA 30324
+    Eels = www.orpheusbrewing.com
+    """
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert guesses["bottler_address"] == "BELTLINE BREWING, LLC. 1440 Dutch Valley PI NE, Atlanta, GA 30324"
 
 
 def test_extract_field_guesses_infers_brand_from_brewed_by_line():
