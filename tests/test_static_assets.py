@@ -27,9 +27,11 @@ def test_guided_review_html_links_static_assets_and_api_fields():
         "net_contents",
         "bottler_address",
         "country_of_origin",
-        "government_warning",
     ):
         assert f'name="{field_name}"' in html
+
+    assert 'name="government_warning"' not in html
+    assert "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL," in html
 
 
 def test_frontend_javascript_calls_verify_endpoint():
@@ -48,7 +50,6 @@ def test_expected_field_inputs_are_optional_for_testing():
         "alcohol_content",
         "net_contents",
         "bottler_address",
-        "government_warning",
     ):
         field_marker = f'name="{field_name}"'
         field_start = html.index(field_marker)

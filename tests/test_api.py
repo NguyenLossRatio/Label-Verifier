@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.constants import REQUIRED_GOVERNMENT_WARNING
 from app.extraction import ExtractionError
 from app.main import app
 from tests.test_verification import STANDARD_WARNING
@@ -47,6 +48,28 @@ def test_verify_endpoint_accepts_raw_text_override():
     assert alcohol_candidates[0]["value"] == "45% Alc./Vol. (90 Proof)"
     assert alcohol_candidates[0]["source"] == "alcohol_content_pattern"
     assert 0 < alcohol_candidates[0]["confidence"] <= 1
+
+
+def test_verify_endpoint_uses_hardcoded_government_warning_when_form_field_is_omitted():
+    client = TestClient(app)
+    form_data = valid_form_data(
+        raw_text_override=(
+            "OLD TOM DISTILLERY\n"
+            "Kentucky Straight Bourbon Whiskey\n"
+            "45% Alc./Vol. (90 Proof)\n"
+            "750 mL\n"
+            "Bottled by Old Tom Distillery, Louisville, KY\n"
+            + REQUIRED_GOVERNMENT_WARNING
+        ),
+    )
+    form_data.pop("government_warning")
+
+    response = client.post("/api/verify", data=form_data)
+
+    assert response.status_code == 200
+    warning = response.json()["field_results"]["government_warning"]
+    assert warning["expected"] == REQUIRED_GOVERNMENT_WARNING
+    assert warning["status"] == "pass"
 
 
 def test_verify_endpoint_accepts_blank_expected_fields_for_testing():

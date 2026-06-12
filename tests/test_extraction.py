@@ -736,6 +736,24 @@ def test_extract_field_guesses_ignores_generic_brand_labels():
     assert guesses["brand_name"] == "Hawk's Shadow Estate"
 
 
+def test_extract_field_guesses_does_not_use_city_or_serving_instruction_as_brand():
+    raw_text = """
+    ENJOY CHILLED.
+    PRODUCED IN CANADA
+    IMPORTED BY: 12345 IMPORTS
+    MIAMI, FL
+    RUM WITH
+    COCONUT LIQUEUR
+    18% ALC/VOL.
+    200 ML
+    """
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert guesses["brand_name"] == ""
+    assert guesses["bottler_address"] == ""
+
+
 def test_extract_field_guesses_ignores_short_noise_before_brand():
     raw_text = """
     eee
@@ -752,6 +770,37 @@ def test_extract_field_guesses_ignores_weak_brewery_suffix_fragment():
     guesses = extract_field_guesses("wr. BREWERY\n12 FL. OZ.")
 
     assert guesses["brand_name"] == ""
+
+
+def test_extract_field_guesses_ignores_uppercase_weak_brewing_fragment():
+    guesses = extract_field_guesses("ZZ BREWING\n12 FL. OZ.")
+
+    assert guesses["brand_name"] == ""
+
+
+def test_extract_field_guesses_allows_numeric_brewing_brand():
+    guesses = extract_field_guesses("123 brewing\n12 FL. OZ.")
+
+    assert guesses["brand_name"] == "123 brewing"
+
+
+def test_extract_field_guesses_ignores_weak_lowercase_ocr_fragment():
+    guesses = extract_field_guesses("ll acs\n18% ALC/VOL.\n200 ML")
+
+    assert guesses["brand_name"] == ""
+
+
+def test_extract_field_guesses_prefers_real_brand_over_uppercase_weak_brewing_fragment():
+    raw_text = """
+    ZZ BREWING
+    ORPHEUS BREWING
+    PINEAPPLE SOUR ALE
+    12 FL. OZ.
+    """
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert guesses["brand_name"] == "ORPHEUS BREWING"
 
 
 def test_extract_field_guesses_prefers_clean_brand_over_weak_brewery_fragment():

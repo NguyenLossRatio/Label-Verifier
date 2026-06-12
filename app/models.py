@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.constants import REQUIRED_GOVERNMENT_WARNING
+
 FieldStatus = Literal["pass", "mismatch", "missing", "needs_review", "unreadable"]
 OverallStatus = Literal["pass", "needs_review", "unreadable"]
 
@@ -13,7 +15,7 @@ class ExpectedFields(BaseModel):
     net_contents: str
     bottler_address: str
     country_of_origin: str = ""
-    government_warning: str
+    government_warning: str = REQUIRED_GOVERNMENT_WARNING
 
 
 class FieldResult(BaseModel):

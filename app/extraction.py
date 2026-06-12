@@ -121,11 +121,16 @@ BRAND_EXCLUSION_PATTERN = re.compile(
     r"\b(?:government|warning|surgeon|pregnancy|contains|sulfites|bottled|produced|distilled|imported|product of|alc|alcohol|proof|fl\.?\s*oz|ml|pint|class|type|according|women|drink|beverages|risk|defects|consume|consumption|impairs|operate|machinery|health|problems|cause)\b",
     re.IGNORECASE,
 )
+SERVING_INSTRUCTION_PATTERN = re.compile(
+    r"\b(?:enjoy|serve|served)\b.*\b(?:chilled|cold|ice|neat|responsibly)\b|\b(?:chill|refrigerate)\b",
+    re.IGNORECASE,
+)
 CLASS_SENTENCE_NOISE_PATTERN = re.compile(
     r"\b(?:this|that|with|into|from|their|there|because|during|after|before|your|great|small|tart|for|and|or|health|problems|contains|sulfites|warning|surgeon|pregnancy|risk|defects|impairs|operate|machinery)\b",
     re.IGNORECASE,
 )
 BRAND_SUFFIX_PATTERN = re.compile(r"\b(?:brewing|brewery|distillery|estate|winery|vineyards?)\b", re.IGNORECASE)
+BRAND_MINIMUM_SCORE = 8
 COMPANY_CANDIDATE_PATTERN = re.compile(
     r"\b((?:(?:[A-Z][A-Za-z0-9'.,-]*|&)\s+){0,8}"
     r"(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)"
@@ -133,6 +138,9 @@ COMPANY_CANDIDATE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 GENERIC_BRAND_LABELS = {
+    "brewing",
+    "brewing co",
+    "brewing co.",
     "brewery",
     "distillery",
     "estate winery",
@@ -796,13 +804,24 @@ def _extract_producer_company(value: str) -> str:
 
 
 def _is_weak_company_suffix_fragment(candidate: str) -> bool:
-    return (
-        re.fullmatch(
-            r"[a-z]{1,3}\.?\s+(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)\.?",
-            candidate.strip(),
-        )
-        is not None
-    )
+    cleaned = _clean_guess_line(candidate)
+    words = re.findall(r"[A-Za-z0-9]+", cleaned)
+    if not words:
+        return True
+
+    suffixes = {"BREWING", "BREWERY", "DISTILLERY", "WINERY", "VINEYARD", "VINEYARDS"}
+    if len(words) == 1 and words[0].upper() in suffixes:
+        return True
+
+    if len(words) != 2 or words[1].upper() not in suffixes:
+        return False
+
+    prefix = words[0]
+    alpha_count = sum(1 for char in prefix if char.isalpha())
+    if alpha_count > 0 and len(prefix) <= 3 and (prefix.isupper() or prefix.islower()):
+        return True
+
+    return False
 
 
 def _producer_from_brewed_canned_address(address: str) -> str:
@@ -918,6 +937,10 @@ def _guess_brand_name(raw_text: str, class_type_guess: str = "") -> str:
             continue
         if BRAND_EXCLUSION_PATTERN.search(line):
             continue
+        if SERVING_INSTRUCTION_PATTERN.search(line):
+            continue
+        if CITY_STATE_PATTERN.search(line) or FULL_STATE_CITY_PATTERN.search(line) or POSTAL_ADDRESS_PATTERN.search(line):
+            continue
         if CLASS_TYPE_PATTERN.search(line):
             continue
 
@@ -941,7 +964,8 @@ def _guess_brand_name(raw_text: str, class_type_guess: str = "") -> str:
 
         candidates.append((score, line))
 
-    return max(candidates, default=(0, ""))[1]
+    best_score, best_value = max(candidates, default=(0, ""))
+    return best_value if best_score >= BRAND_MINIMUM_SCORE else ""
 
 
 def _guess_country_of_origin(raw_text: str) -> str:
@@ -961,6 +985,8 @@ def _is_potential_name_component(line: str) -> bool:
     if _normalize_ocr_line(line) in GENERIC_BRAND_LABELS:
         return False
     if BRAND_EXCLUSION_PATTERN.search(line):
+        return False
+    if SERVING_INSTRUCTION_PATTERN.search(line):
         return False
     if CLASS_TYPE_PATTERN.search(line):
         return False

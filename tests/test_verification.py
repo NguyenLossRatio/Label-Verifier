@@ -1,15 +1,11 @@
 import pytest
 
+from app.constants import REQUIRED_GOVERNMENT_WARNING
 from app.models import ExpectedFields
 from app.verification import normalize_text, verify_label_text
 
 
-STANDARD_WARNING = (
-    "GOVERNMENT WARNING: (1) According to the Surgeon General, women "
-    "should not drink alcoholic beverages during pregnancy because of the "
-    "risk of birth defects. (2) Consumption of alcoholic beverages impairs "
-    "your ability to drive a car or operate machinery, and may cause health problems."
-)
+STANDARD_WARNING = REQUIRED_GOVERNMENT_WARNING
 
 
 def expected_fields(**overrides):
@@ -270,7 +266,7 @@ def test_government_warning_prefix_must_belong_to_warning_statement():
 
 
 def test_government_warning_allows_wrapped_text_with_exact_case_and_words():
-    wrapped_warning = STANDARD_WARNING.replace("women should not", "women\nshould not")
+    wrapped_warning = STANDARD_WARNING.replace("WOMEN SHOULD NOT", "WOMEN\nSHOULD NOT")
     raw_text = (
         "OLD TOM DISTILLERY\n"
         "Kentucky Straight Bourbon Whiskey\n"
@@ -337,8 +333,8 @@ def test_government_warning_pass_preserves_ocr_guess_for_extracted_display():
     )
     warning_guess = (
         "GOVERNMENT WARNING:\n"
-        "(1) According to the Surgeon General, women should not drink alcoholic beverages\n"
-        "during pregnancy because of the risk of birth defects."
+        "(1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES\n"
+        "DURING PREGNANCY BECAUSE OF THE RISK OF BIRTH DEFECTS."
     )
 
     report = verify_label_text(
@@ -405,13 +401,13 @@ def test_government_warning_mismatch_preserves_ocr_guess_for_extracted_display()
     raw_text = (
         "OLD TOM DISTILLERY\n"
         "GOVERNMENT WARNING:\n"
-        "(1) According to the Surgeon General, women should not drink alcoholic beverages\n"
-        "(2) Consumption of alcoholic beverages impairs your ability to drive a car"
+        "(1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES\n"
+        "(2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR"
     )
     warning_guess = (
         "GOVERNMENT WARNING:\n"
-        "(1) According to the Surgeon General, women should not drink alcoholic beverages\n"
-        "(2) Consumption of alcoholic beverages impairs your ability to drive a car"
+        "(1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES\n"
+        "(2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR"
     )
 
     report = verify_label_text(
@@ -427,14 +423,14 @@ def test_government_warning_mismatch_preserves_ocr_guess_for_extracted_display()
 
 
 def test_government_warning_exact_ocr_guess_passes_even_when_raw_text_is_noisy():
-    warning_guess = STANDARD_WARNING.replace("women should not", "women\nshould not")
+    warning_guess = STANDARD_WARNING.replace("WOMEN SHOULD NOT", "WOMEN\nSHOULD NOT")
     raw_text = (
         "OLD TOM DISTILLERY\n"
         "GOVERNMENT WARNING:\n"
-        "(1) According to the Surgeon General, women\n"
+        "(1) ACCORDING TO THE SURGEON GENERAL, WOMEN\n"
         "LOGO NOISE\n"
-        "should not drink alcoholic beverages during pregnancy because of the risk of birth defects.\n"
-        "(2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
+        "SHOULD NOT DRINK ALCOHOLIC BEVERAGES DURING PREGNANCY BECAUSE OF THE RISK OF BIRTH DEFECTS.\n"
+        "(2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS."
     )
 
     report = verify_label_text(
@@ -449,7 +445,7 @@ def test_government_warning_exact_ocr_guess_passes_even_when_raw_text_is_noisy()
 
 
 def test_government_warning_wording_mismatch_is_flagged():
-    altered_warning = STANDARD_WARNING.replace("may cause health problems", "can cause health problems")
+    altered_warning = STANDARD_WARNING.replace("MAY CAUSE HEALTH PROBLEMS", "CAN CAUSE HEALTH PROBLEMS")
     report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + altered_warning)
 
     warning = report.field_results["government_warning"]
@@ -459,7 +455,7 @@ def test_government_warning_wording_mismatch_is_flagged():
 
 
 def test_government_warning_body_case_change_is_mismatch():
-    altered_warning = STANDARD_WARNING.replace("According", "according")
+    altered_warning = STANDARD_WARNING.replace("ACCORDING", "According")
     report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + altered_warning)
 
     warning = report.field_results["government_warning"]
@@ -469,7 +465,7 @@ def test_government_warning_body_case_change_is_mismatch():
 
 
 def test_government_warning_punctuation_change_is_mismatch():
-    altered_warning = STANDARD_WARNING.replace("problems.", "problems")
+    altered_warning = STANDARD_WARNING.replace("PROBLEMS.", "PROBLEMS")
     report = verify_label_text(expected_fields(), "OLD TOM DISTILLERY\n" + altered_warning)
 
     warning = report.field_results["government_warning"]

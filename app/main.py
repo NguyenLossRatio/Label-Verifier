@@ -41,7 +41,6 @@ async def verify(
     net_contents: Annotated[str, Form()] = "",
     bottler_address: Annotated[str, Form()] = "",
     country_of_origin: Annotated[str, Form()] = "",
-    government_warning: Annotated[str, Form()] = "",
     raw_text_override: Annotated[str, Form()] = "",
     label_image: Annotated[UploadFile | None, File()] = None,
 ) -> VerifyResponse:
@@ -53,7 +52,6 @@ async def verify(
             net_contents=net_contents,
             bottler_address=bottler_address,
             country_of_origin=country_of_origin,
-            government_warning=government_warning,
         )
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
