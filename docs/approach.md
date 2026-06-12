@@ -12,13 +12,13 @@ The backend is a FastAPI app in `app/main.py`. The frontend in `app/static` post
 
 ## Text Extraction
 
-Image OCR uses local Tesseract through `pytesseract`. The extractor prepares multiple image variants, applies a runtime budget, and performs targeted OCR passes for difficult cases such as:
+Image OCR uses local Tesseract through `pytesseract`. The extractor resizes uploaded images so the longest side is at most `1600px`, prepares multiple image variants, applies a runtime budget, and performs targeted OCR passes for difficult cases such as:
 
 - rotated or sideways government warning text
 - field-region crops
 - noisy address areas
 
-The app also supports optional EasyOCR through the `strong-ocr` extra and environment flags, but Tesseract remains the default path because it starts faster for local review.
+The app also supports optional EasyOCR through the `strong-ocr` extra and environment flags, but Tesseract-only OCR is the default path because it starts faster for local review.
 
 ## Field Detection
 

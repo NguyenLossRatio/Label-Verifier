@@ -108,9 +108,13 @@ curl -X POST http://127.0.0.1:8000/api/verify \
 .venv/bin/python -m pytest
 ```
 
+## OCR Defaults
+
+The default local OCR path is Tesseract-only. Uploaded images are resized before OCR so the longest side is at most `1600px`, which keeps local runs faster while preserving enough detail for typical label text.
+
 ## Optional Strong OCR
 
-The default local OCR path is Tesseract. Optional EasyOCR support exists behind environment flags and the `strong-ocr` extra, but it is not required for normal local use.
+Optional EasyOCR support exists behind environment flags and the `strong-ocr` extra, but it is not required for normal local use.
 
 ```bash
 .venv/bin/python -m pip install -e ".[dev,strong-ocr]"
@@ -119,7 +123,7 @@ The default local OCR path is Tesseract. Optional EasyOCR support exists behind 
 Useful environment variables:
 
 - `LABEL_VERIFIER_USE_EASYOCR=0` disables EasyOCR.
-- `LABEL_VERIFIER_OCR_MODE=tesseract` forces Tesseract-only OCR.
+- `LABEL_VERIFIER_OCR_MODE=tesseract` uses Tesseract-only OCR. This is the default.
 - `LABEL_VERIFIER_OCR_MODE=fallback` uses Tesseract first with optional EasyOCR fallback.
 - `LABEL_VERIFIER_OCR_MODE=strong` tries EasyOCR first when installed.
 

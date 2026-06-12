@@ -121,7 +121,7 @@ def test_extract_text_from_image_preprocesses_and_caps_large_images(monkeypatch)
     assert text == "OLD TOM DISTILLERY"
     assert calls
     assert {mode for mode, _size, _kwargs in calls} == {"L"}
-    assert all(max(size) <= 2200 for _mode, size, _kwargs in calls)
+    assert all(max(size) <= 1600 for _mode, size, _kwargs in calls)
 
 
 def test_extract_text_from_image_upscales_small_images_for_ocr(monkeypatch):
@@ -363,6 +363,33 @@ def test_extract_text_from_image_uses_tesseract_first_by_default(monkeypatch):
 
     assert "OLD TOM DISTILLERY" in text
     assert "CURSIVE RESERVE" not in text
+
+
+def test_extract_text_from_image_does_not_load_easyocr_by_default(monkeypatch):
+    class FakeEasyOcrReader:
+        def readtext(self, image, **kwargs):
+            return [
+                ([[0, 0], [220, 0], [220, 18], [0, 18]], "SLOW OCR TEXT", 0.94),
+            ]
+
+    monkeypatch.delenv("LABEL_VERIFIER_USE_EASYOCR", raising=False)
+    monkeypatch.delenv("LABEL_VERIFIER_OCR_MODE", raising=False)
+    monkeypatch.setattr(
+        pytesseract,
+        "image_to_string",
+        lambda image, **kwargs: "ORPHEUS BREWING",
+    )
+    monkeypatch.setattr(
+        extraction,
+        "_load_easyocr_reader",
+        lambda: FakeEasyOcrReader(),
+        raising=False,
+    )
+
+    text, _ = extract_text_from_image(png_bytes())
+
+    assert "ORPHEUS BREWING" in text
+    assert "SLOW OCR TEXT" not in text
 
 
 def test_extract_text_from_image_does_not_load_easyocr_when_only_net_contents_is_missing(monkeypatch):
