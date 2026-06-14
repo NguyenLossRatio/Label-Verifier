@@ -8,7 +8,7 @@ def test_guided_review_html_has_required_controls():
     assert 'id="expectedFields"' in html
     assert 'id="verifyButton"' in html
     assert 'id="results"' in html
-    assert 'id="rawTextOverride"' in html
+    assert 'id="rawTextOverride"' not in html
 
 
 def test_guided_review_html_links_static_assets_and_api_fields():
@@ -18,7 +18,7 @@ def test_guided_review_html_links_static_assets_and_api_fields():
     assert 'src="/static/app.js"' in html
     assert 'id="status"' in html
     assert 'name="label_image"' in html
-    assert 'name="raw_text_override"' in html
+    assert 'name="raw_text_override"' not in html
 
     for field_name in (
         "brand_name",

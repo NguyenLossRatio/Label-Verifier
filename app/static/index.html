@@ -19,7 +19,7 @@
       <section class="panel upload-panel" aria-labelledby="uploadTitle">
         <div class="panel-heading">
           <h2 id="uploadTitle">Label Source</h2>
-          <p>Upload a label image, paste extracted text, or provide both.</p>
+          <p>Upload a label image for OCR review.</p>
         </div>
 
         <label class="drop-zone" for="labelImage">
@@ -32,14 +32,6 @@
           <img id="preview" alt="Selected label preview">
           <p id="previewPlaceholder">No image selected</p>
         </div>
-
-        <label class="field-label" for="rawTextOverride">Raw extracted text override</label>
-        <textarea
-          id="rawTextOverride"
-          name="raw_text_override"
-          rows="8"
-          placeholder="Paste OCR text here when you want to review text directly."
-        ></textarea>
       </section>
 
       <section class="panel review-panel" aria-labelledby="fieldsTitle">

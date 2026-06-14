@@ -41,7 +41,6 @@ async def verify(
     net_contents: Annotated[str, Form()] = "",
     bottler_address: Annotated[str, Form()] = "",
     country_of_origin: Annotated[str, Form()] = "",
-    raw_text_override: Annotated[str, Form()] = "",
     label_image: Annotated[UploadFile | None, File()] = None,
 ) -> VerifyResponse:
     try:
@@ -56,19 +55,16 @@ async def verify(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    if raw_text_override.strip():
-        raw_text = raw_text_override.strip()
-        extraction_ms = 0
-    elif label_image is not None:
-        if not (label_image.content_type or "").startswith("image/"):
-            raise HTTPException(status_code=400, detail="Unsupported file type. Upload an image file.")
+    if label_image is None:
+        raise HTTPException(status_code=400, detail="Upload a label image.")
 
-        try:
-            raw_text, extraction_ms = extract_text_from_image(await label_image.read())
-        except ExtractionError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    else:
-        raise HTTPException(status_code=400, detail="Upload a label image or provide raw extracted text.")
+    if not (label_image.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="Unsupported file type. Upload an image file.")
+
+    try:
+        raw_text, extraction_ms = extract_text_from_image(await label_image.read())
+    except ExtractionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     field_candidates = extract_field_candidates(raw_text)
     field_guesses = select_field_guesses(field_candidates)

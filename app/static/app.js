@@ -2,7 +2,6 @@ const labelImage = document.querySelector("#labelImage");
 const preview = document.querySelector("#preview");
 const previewFrame = document.querySelector(".preview-frame");
 const previewPlaceholder = document.querySelector("#previewPlaceholder");
-const rawTextOverride = document.querySelector("#rawTextOverride");
 const expectedFields = document.querySelector("#expectedFields");
 const verifyButton = document.querySelector("#verifyButton");
 const statusOutput = document.querySelector("#status");
@@ -143,8 +142,6 @@ expectedFields.addEventListener("submit", async (event) => {
   if (file) {
     body.append("label_image", file);
   }
-
-  body.append("raw_text_override", rawTextOverride.value.trim());
 
   verifyButton.disabled = true;
   setStatus("Verifying...", "busy");

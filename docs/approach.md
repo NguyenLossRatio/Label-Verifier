@@ -4,7 +4,7 @@
 
 Label Verifier separates the workflow into three steps:
 
-1. Extract text from the label image, or accept pasted OCR text through `raw_text_override`.
+1. Extract text from the uploaded label image.
 2. Detect likely field values from the extracted text.
 3. Compare detected values against expected values and return field-level results.
 

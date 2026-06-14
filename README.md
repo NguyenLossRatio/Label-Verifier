@@ -1,6 +1,6 @@
 # Label Verifier
 
-Label Verifier is a local FastAPI prototype for reviewing alcohol label text against expected TTB-style label fields. It accepts either an uploaded label image or pasted OCR text, extracts likely field values, and reports pass, mismatch, missing, or needs-review results.
+Label Verifier is a local FastAPI prototype for reviewing alcohol label text against expected TTB-style label fields. It accepts an uploaded label image, extracts likely field values with OCR, and reports pass, mismatch, missing, or needs-review results.
 
 ## What It Checks
 
@@ -66,20 +66,17 @@ Expected response:
 
 ## Use The App
 
-1. Upload a label image, paste raw OCR text, or provide both.
+1. Upload a label image.
 2. Fill in the expected fields you want to compare.
 3. Leave expected fields blank when you are testing extraction only.
 4. Select `Verify Label`.
 5. Review extracted values, expected values, confidence/source candidates, and field status messages.
 
-When raw extracted text is provided, the app skips image OCR and verifies the pasted text directly.
-
 ## API
 
 `POST /api/verify` accepts multipart form data:
 
-- `label_image`: optional image upload
-- `raw_text_override`: optional pasted OCR text
+- `label_image`: required image upload
 - `brand_name`
 - `class_type`
 - `alcohol_content`
@@ -87,7 +84,7 @@ When raw extracted text is provided, the app skips image OCR and verifies the pa
 - `bottler_address`
 - `country_of_origin`
 
-At least one of `label_image` or `raw_text_override` is required. `government_warning` is intentionally not an input field.
+`label_image` is required. `government_warning` is intentionally not an input field.
 
 Example:
 
@@ -99,7 +96,7 @@ curl -X POST http://127.0.0.1:8000/api/verify \
   -F net_contents="12 FL. OZ." \
   -F bottler_address="" \
   -F country_of_origin="" \
-  -F $'raw_text_override=ORPHEUS BREWING\nPINEAPPLE SOUR ALE\n12 FL. OZ.'
+  -F label_image=@examplelabels/orpheus_seal_main.jpg
 ```
 
 ## Test
