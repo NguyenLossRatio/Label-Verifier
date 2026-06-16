@@ -170,7 +170,7 @@ function validateApplication(application) {
   requireNonblankString(attachment.content_type, "label_attachment.content_type");
   requireNonblankString(attachment.data, "label_attachment.data");
 
-  const contentType = attachment.content_type.trim().toLowerCase();
+  const contentType = attachment.content_type.toLowerCase();
 
   if (!contentType.startsWith("image/") || contentType === "image/") {
     throw new Error("label_attachment.content_type must be an image type.");

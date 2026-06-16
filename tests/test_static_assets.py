@@ -59,8 +59,9 @@ def test_frontend_javascript_resets_invalid_and_successful_preview_state():
 def test_frontend_javascript_matches_backend_image_content_type_validation():
     javascript = Path("app/static/app.js").read_text()
 
-    assert 'const contentType = attachment.content_type.trim().toLowerCase()' in javascript
+    assert 'const contentType = attachment.content_type.toLowerCase()' in javascript
     assert '!contentType.startsWith("image/") || contentType === "image/"' in javascript
+    assert ".trim().toLowerCase()" not in javascript
     assert "attachment.content_type.toLowerCase().startsWith" not in javascript
     assert "contentType" in javascript
 
