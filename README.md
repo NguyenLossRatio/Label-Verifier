@@ -14,6 +14,12 @@ Label Verifier is a FastAPI prototype for reviewing alcohol label text against s
 
 The government warning is not entered by the user. The app always compares extracted text against the hardcoded required warning.
 
+## Review Disclaimer
+
+This is a prototype review aid, not an official compliance determination. Results should be treated as prompts for human review, especially when a field is marked `mismatch`, `missing`, or `needs_review`.
+
+Formatting and text-matching rules are intentionally conservative and still need policy validation. The correct level of strictness may vary by field: some values may allow harmless differences in capitalization, punctuation, line breaks, abbreviations, or spacing, while other required statements may need exact wording and capitalization. Until those rules are confirmed, the app may flag labels that a reviewer would accept, and it may miss issues that depend on regulatory context outside the current prototype schema.
+
 ## Architecture
 
 - `app/main.py` defines the FastAPI app, serves the static UI, exposes `/api/health`, and handles `POST /api/verify`.
@@ -241,6 +247,7 @@ https://ttb-label-reader-production.up.railway.app
 - OCR accuracy depends on image quality, orientation, contrast, and font legibility.
 - The extractor uses field-specific heuristics, not a trained label-understanding model.
 - Alcohol type detection is limited to the currently encoded type patterns and may miss less common classes, specialty products, or nuanced TTB class/type distinctions.
+- Field matching strictness is not final. The prototype currently mixes tolerant matching for some fields with strict government warning text comparison, but the exact formatting and wording rules need compliance review.
 - Testing data is limited to a small local set of example labels and synthetic cases, not a broad validated corpus of real TTB applications and labels.
 - The exact format of a standardized TTB application input is not yet known; the current JSON structure is a prototype schema for this app.
 - The JSON application schema only includes the core fields currently verified by the app; it does not yet model optional TTB application fields or conditional fields that may appear on full applications.
