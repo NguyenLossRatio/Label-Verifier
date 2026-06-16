@@ -7,7 +7,11 @@ from app.application_upload import ApplicationUploadError, parse_application_upl
 from app.constants import REQUIRED_GOVERNMENT_WARNING
 
 
-LABEL_BYTES = b"fake image bytes"
+LABEL_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/"
+    "AAX+Av4N70a4AAAAAElFTkSuQmCC"
+)
+NON_IMAGE_BYTES = b"fake image bytes"
 
 
 def application_payload(**overrides):
@@ -52,6 +56,14 @@ def test_parse_application_upload_defaults_country_of_origin_to_blank():
     payload.pop("country_of_origin")
 
     parsed = parse_application_upload(encode_application(payload))
+
+    assert parsed.expected_fields.country_of_origin == ""
+
+
+def test_parse_application_upload_normalizes_null_country_of_origin_to_blank():
+    parsed = parse_application_upload(
+        encode_application(application_payload(country_of_origin=None))
+    )
 
     assert parsed.expected_fields.country_of_origin == ""
 
@@ -109,6 +121,22 @@ def test_parse_application_upload_rejects_invalid_base64_attachment_data():
             "filename": "label.png",
             "content_type": "image/png",
             "data": "not base64",
+        }
+    )
+
+    with pytest.raises(
+        ApplicationUploadError,
+        match="Label attachment data must be base64-encoded image bytes.",
+    ):
+        parse_application_upload(encode_application(payload))
+
+
+def test_parse_application_upload_rejects_base64_encoded_non_image_bytes():
+    payload = application_payload(
+        label_attachment={
+            "filename": "label.png",
+            "content_type": "image/png",
+            "data": base64.b64encode(NON_IMAGE_BYTES).decode("ascii"),
         }
     )
 

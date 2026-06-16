@@ -2,8 +2,10 @@ import base64
 import binascii
 import json
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Any
 
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict
 
 from app.models import ExpectedFields
@@ -91,7 +93,9 @@ def _validate_required_text_fields(payload: dict[str, Any]) -> None:
             raise ApplicationUploadError(f"Application is missing required field: {field_name}.")
 
     country = payload.get("country_of_origin", "")
-    if country is not None and not isinstance(country, str):
+    if country is None:
+        payload["country_of_origin"] = ""
+    elif not isinstance(country, str):
         raise ApplicationUploadError("Application is missing required field: country_of_origin.")
 
 
@@ -105,7 +109,8 @@ def _validate_attachment_payload(payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(value, str) or not value.strip():
             raise ApplicationUploadError("Application is missing label_attachment.")
 
-    if not attachment["content_type"].lower().startswith("image/"):
+    content_type = attachment["content_type"].lower()
+    if not content_type.startswith("image/") or content_type == "image/":
         raise ApplicationUploadError("Unsupported label attachment type. Include an image attachment.")
 
     return attachment
@@ -120,4 +125,13 @@ def _decode_label_bytes(encoded_data: str) -> bytes:
     if not label_bytes:
         raise ApplicationUploadError("Label attachment data must be base64-encoded image bytes.")
 
+    _validate_image_bytes(label_bytes)
     return label_bytes
+
+
+def _validate_image_bytes(label_bytes: bytes) -> None:
+    try:
+        with Image.open(BytesIO(label_bytes)) as image:
+            image.verify()
+    except (SyntaxError, UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ApplicationUploadError("Label attachment data must be base64-encoded image bytes.") from exc
