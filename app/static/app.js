@@ -8,6 +8,7 @@ const verifyButton = document.querySelector("#verifyButton");
 const statusOutput = document.querySelector("#status");
 const results = document.querySelector("#results");
 let currentApplicationValid = false;
+let applicationVersion = 0;
 
 const fieldOrder = [
   "brand_name",
@@ -202,6 +203,8 @@ function renderApplicationFields(application) {
 }
 
 applicationFile.addEventListener("change", async () => {
+  applicationVersion += 1;
+  const selectedApplicationVersion = applicationVersion;
   const file = applicationFile.files[0];
 
   resetApplicationPreview();
@@ -212,7 +215,13 @@ applicationFile.addEventListener("change", async () => {
   }
 
   try {
-    const application = JSON.parse(await file.text());
+    const applicationText = await file.text();
+
+    if (selectedApplicationVersion !== applicationVersion) {
+      return;
+    }
+
+    const application = JSON.parse(applicationText);
     const attachment = validateApplication(application);
 
     renderApplicationFields(application);
@@ -224,6 +233,10 @@ applicationFile.addEventListener("change", async () => {
     results.innerHTML = '<p class="empty-state">No results yet.</p>';
     setStatus("Application loaded", "pass");
   } catch (error) {
+    if (selectedApplicationVersion !== applicationVersion) {
+      return;
+    }
+
     const message = error instanceof Error ? error.message : "Application file could not be loaded.";
     renderError(message);
     setStatus("Needs attention", "error");
@@ -244,6 +257,7 @@ applicationForm.addEventListener("submit", async (event) => {
 
   const body = new FormData();
   body.append("application_file", file);
+  const submittedApplicationVersion = applicationVersion;
 
   verifyButton.disabled = true;
   setStatus("Verifying...", "busy");
@@ -259,6 +273,10 @@ applicationForm.addEventListener("submit", async (event) => {
       responseBody = null;
     }
 
+    if (submittedApplicationVersion !== applicationVersion) {
+      return;
+    }
+
     if (!response.ok) {
       const message = getApiErrorMessage(responseBody, "Verification failed. Please check the application and try again.");
       throw new Error(message);
@@ -267,10 +285,16 @@ applicationForm.addEventListener("submit", async (event) => {
     renderResults(responseBody);
     setStatus(formatStatus(responseBody.overall_status), responseBody.overall_status);
   } catch (error) {
+    if (submittedApplicationVersion !== applicationVersion) {
+      return;
+    }
+
     const message = error instanceof Error ? error.message : "Verification failed.";
     renderError(message);
     setStatus("Needs attention", "error");
   } finally {
-    verifyButton.disabled = !currentApplicationValid;
+    if (submittedApplicationVersion === applicationVersion) {
+      verifyButton.disabled = !currentApplicationValid;
+    }
   }
 });

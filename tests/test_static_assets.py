@@ -65,6 +65,17 @@ def test_frontend_javascript_restores_verify_button_from_current_validity_state(
     assert "verifyButton.disabled = false;" not in javascript
 
 
+def test_frontend_javascript_ignores_stale_async_application_updates():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert "let applicationVersion = 0;" in javascript
+    assert "applicationVersion += 1;" in javascript
+    assert "const selectedApplicationVersion = applicationVersion;" in javascript
+    assert "if (selectedApplicationVersion !== applicationVersion)" in javascript
+    assert "const submittedApplicationVersion = applicationVersion;" in javascript
+    assert "if (submittedApplicationVersion !== applicationVersion)" in javascript
+
+
 def test_frontend_javascript_matches_backend_image_content_type_validation():
     javascript = Path("app/static/app.js").read_text()
 
