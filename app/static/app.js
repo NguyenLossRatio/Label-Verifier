@@ -7,6 +7,7 @@ const applicationFields = document.querySelector("#applicationFields");
 const verifyButton = document.querySelector("#verifyButton");
 const statusOutput = document.querySelector("#status");
 const results = document.querySelector("#results");
+let currentApplicationValid = false;
 
 const fieldOrder = [
   "brand_name",
@@ -137,6 +138,7 @@ function getApiErrorMessage(errorBody, fallback) {
 }
 
 function resetApplicationPreview(filename = "No application selected") {
+  currentApplicationValid = false;
   preview.removeAttribute("src");
   previewFrame.classList.remove("has-image");
   previewPlaceholder.textContent = filename;
@@ -217,7 +219,8 @@ applicationFile.addEventListener("change", async () => {
     preview.src = `data:${attachment.content_type};base64,${attachment.data}`;
     previewFrame.classList.add("has-image");
     previewPlaceholder.textContent = attachment.filename;
-    verifyButton.disabled = false;
+    currentApplicationValid = true;
+    verifyButton.disabled = !currentApplicationValid;
     results.innerHTML = '<p class="empty-state">No results yet.</p>';
     setStatus("Application loaded", "pass");
   } catch (error) {
@@ -268,6 +271,6 @@ applicationForm.addEventListener("submit", async (event) => {
     renderError(message);
     setStatus("Needs attention", "error");
   } finally {
-    verifyButton.disabled = false;
+    verifyButton.disabled = !currentApplicationValid;
   }
 });

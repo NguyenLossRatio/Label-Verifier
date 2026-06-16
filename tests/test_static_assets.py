@@ -56,6 +56,15 @@ def test_frontend_javascript_resets_invalid_and_successful_preview_state():
     assert 'resetApplicationPreview(file.name)' not in javascript
 
 
+def test_frontend_javascript_restores_verify_button_from_current_validity_state():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert "currentApplicationValid" in javascript
+    assert "verifyButton.disabled = !currentApplicationValid" in javascript
+    assert "finally" in javascript
+    assert "verifyButton.disabled = false;" not in javascript
+
+
 def test_frontend_javascript_matches_backend_image_content_type_validation():
     javascript = Path("app/static/app.js").read_text()
 
