@@ -140,6 +140,8 @@ function getApiErrorMessage(errorBody, fallback) {
 
 function resetApplicationPreview(filename = "No application selected") {
   currentApplicationValid = false;
+  preview.onload = null;
+  preview.onerror = null;
   preview.removeAttribute("src");
   previewFrame.classList.remove("has-image");
   previewPlaceholder.textContent = filename;
@@ -163,6 +165,14 @@ function validateApplication(application) {
     requireNonblankString(application[fieldName], fieldName);
   });
 
+  if (
+    "country_of_origin" in application &&
+    application.country_of_origin !== null &&
+    typeof application.country_of_origin !== "string"
+  ) {
+    throw new Error("Application is missing required field: country_of_origin.");
+  }
+
   const attachment = application.label_attachment;
 
   if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) {
@@ -179,7 +189,29 @@ function validateApplication(application) {
     throw new Error("label_attachment.content_type must be an image type.");
   }
 
+  try {
+    atob(attachment.data);
+  } catch (_error) {
+    throw new Error("Label attachment data must be base64-encoded image bytes.");
+  }
+
   return { ...attachment, content_type: contentType };
+}
+
+function loadAttachmentPreview(attachment) {
+  return new Promise((resolve, reject) => {
+    preview.onload = () => {
+      preview.onload = null;
+      preview.onerror = null;
+      resolve();
+    };
+    preview.onerror = () => {
+      preview.onload = null;
+      preview.onerror = null;
+      reject(new Error("Label attachment data must be base64-encoded image bytes."));
+    };
+    preview.src = `data:${attachment.content_type};base64,${attachment.data}`;
+  });
 }
 
 function renderApplicationFields(application) {
@@ -225,7 +257,12 @@ applicationFile.addEventListener("change", async () => {
     const attachment = validateApplication(application);
 
     renderApplicationFields(application);
-    preview.src = `data:${attachment.content_type};base64,${attachment.data}`;
+    await loadAttachmentPreview(attachment);
+
+    if (selectedApplicationVersion !== applicationVersion) {
+      return;
+    }
+
     previewFrame.classList.add("has-image");
     previewPlaceholder.textContent = attachment.filename;
     currentApplicationValid = true;

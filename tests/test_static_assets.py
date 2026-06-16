@@ -86,6 +86,26 @@ def test_frontend_javascript_matches_backend_image_content_type_validation():
     assert "contentType" in javascript
 
 
+def test_frontend_javascript_matches_backend_optional_country_validation():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert '"country_of_origin" in application' in javascript
+    assert 'application.country_of_origin !== null' in javascript
+    assert 'typeof application.country_of_origin !== "string"' in javascript
+    assert "Application is missing required field: country_of_origin." in javascript
+
+
+def test_frontend_javascript_validates_attachment_data_before_enabling_verify():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert "atob(attachment.data)" in javascript
+    assert "preview.onload" in javascript
+    assert "preview.onerror" in javascript
+    assert "await loadAttachmentPreview" in javascript
+    assert "Label attachment data must be base64-encoded image bytes." in javascript
+    assert "verifyButton.disabled = !currentApplicationValid" in javascript
+
+
 def test_disabled_verify_button_does_not_use_wait_cursor():
     stylesheet = Path("app/static/styles.css").read_text()
 
