@@ -77,7 +77,7 @@ Expected response:
 
 - `application_file`: required JSON upload
 
-The JSON application must include standardized expected fields and a base64 image attachment:
+The JSON application must include standardized expected fields and a base64 image attachment. `brand_name`, `class_type`, `alcohol_content`, `net_contents`, and `bottler_address` are required nonblank strings; `country_of_origin` is optional. `label_attachment.data` must contain base64 image bytes.
 
 ```json
 {
@@ -101,7 +101,7 @@ Example:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/verify \
-  -F application_file=@example_application.json
+  -F application_file=@path/to/application.json
 ```
 
 ## Test
@@ -112,7 +112,7 @@ curl -X POST http://127.0.0.1:8000/api/verify \
 
 ## OCR Defaults
 
-The default local OCR path is Tesseract-only. Uploaded images are resized before OCR so the longest side is at most `1600px`, which keeps local runs faster while preserving enough detail for typical label text.
+The default local OCR path is Tesseract-only. Decoded label attachment images are resized before OCR so the longest side is at most `1600px`, which keeps local runs faster while preserving enough detail for typical label text.
 
 ## Optional Strong OCR
 
