@@ -2,17 +2,19 @@
 
 ## Approach
 
-Label Verifier separates the workflow into three steps:
+Label Verifier separates the workflow into these steps:
 
-1. Extract text from the uploaded label image.
-2. Detect likely field values from the extracted text.
-3. Compare detected values against expected values and return field-level results.
+1. Parse the uploaded liquor application JSON file.
+2. Decode the embedded label image attachment.
+3. Extract text from the label image.
+4. Detect likely field values from the extracted text.
+5. Compare detected values against expected application values and return field-level results.
 
-The backend is a FastAPI app in `app/main.py`. The frontend in `app/static` posts multipart form data to `/api/verify` and renders the response.
+The backend is a FastAPI app in `app/main.py`. The frontend in `app/static` posts one multipart `application_file` upload to `/api/verify` and renders the response.
 
 ## Text Extraction
 
-Image OCR uses local Tesseract through `pytesseract`. The extractor resizes uploaded images so the longest side is at most `1600px`, prepares multiple image variants, applies a runtime budget, and performs targeted OCR passes for difficult cases such as:
+Image OCR uses local Tesseract through `pytesseract`. The extractor resizes decoded label attachment images so the longest side is at most `1600px`, prepares multiple image variants, applies a runtime budget, and performs targeted OCR passes for difficult cases such as:
 
 - rotated or sideways government warning text
 - field-region crops
@@ -38,7 +40,6 @@ Verification is handled in `app/verification.py`.
 - Brand matching tolerates punctuation, capitalization, and `&` versus `and`.
 - Net contents matching ignores capitalization, punctuation, whitespace, and line breaks.
 - Country of origin is optional when no expected value is provided.
-- Blank expected fields are allowed for extraction testing and return `needs_review` instead of failing.
 - Government warning comparison is intentionally strict. The expected warning is hardcoded in `app/constants.py`, is case-sensitive, and must match the required wording.
 
 ## Tools Used
@@ -57,8 +58,8 @@ Verification is handled in `app/verification.py`.
 ## Assumptions
 
 - The app is a prototype for guided review, not an official TTB filing system.
-- Label images and extracted text are processed per request and are not persisted by the application.
+- Embedded label attachments and extracted text are processed per request and are not persisted by the application.
 - OCR output can be incomplete or noisy, so extraction confidence and status messages are meant to support human review.
 - Government warning text is a fixed compliance requirement for this workflow and should not be user-editable.
-- The expected field inputs may be blank to support testing extraction behavior independently from verification.
+- Expected field values come from the uploaded application JSON, not manual form inputs.
 - Runtime should stay reasonably fast for local use, so the default OCR path favors Tesseract and targeted fallback passes over heavier OCR models.
