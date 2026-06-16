@@ -6,9 +6,10 @@ def test_application_upload_html_has_required_controls():
 
     assert 'id="applicationFile"' in html
     assert 'name="application_file"' in html
+    assert 'accept=".json,application/json"' in html
     assert 'id="applicationForm"' in html
     assert 'id="applicationFields"' in html
-    assert 'id="verifyButton"' in html
+    assert 'id="verifyButton" type="submit" disabled' in html
     assert 'id="results"' in html
     assert 'id="rawTextOverride"' not in html
 
@@ -19,6 +20,9 @@ def test_application_upload_html_links_static_assets_and_removes_manual_expected
     assert 'href="/static/styles.css"' in html
     assert 'src="/static/app.js"' in html
     assert 'id="status"' in html
+    assert "Application Source" in html
+    assert "Application Fields" in html
+    assert "No application selected" in html
     assert 'name="label_image"' not in html
 
     for field_name in (
@@ -43,6 +47,20 @@ def test_frontend_javascript_posts_application_file_to_verify_endpoint():
     assert "renderApplicationFields" in javascript
     assert "field_guesses" in javascript
     assert "fieldGuesses" in javascript
+
+
+def test_frontend_javascript_resets_invalid_and_successful_preview_state():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert 'results.innerHTML = \'<p class="empty-state">No results yet.</p>\'' in javascript
+    assert 'resetApplicationPreview(file.name)' not in javascript
+    assert 'attachment.content_type.toLowerCase().startsWith("image/")' in javascript
+
+
+def test_disabled_verify_button_does_not_use_wait_cursor():
+    stylesheet = Path("app/static/styles.css").read_text()
+
+    assert "cursor: wait" not in stylesheet
 
 
 def test_frontend_preserves_multiline_field_value_formatting():

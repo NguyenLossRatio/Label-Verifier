@@ -170,7 +170,7 @@ function validateApplication(application) {
   requireNonblankString(attachment.content_type, "label_attachment.content_type");
   requireNonblankString(attachment.data, "label_attachment.data");
 
-  if (!attachment.content_type.startsWith("image/")) {
+  if (!attachment.content_type.toLowerCase().startsWith("image/")) {
     throw new Error("label_attachment.content_type must be an image type.");
   }
 
@@ -216,12 +216,13 @@ applicationFile.addEventListener("change", async () => {
     previewFrame.classList.add("has-image");
     previewPlaceholder.textContent = attachment.filename;
     verifyButton.disabled = false;
+    results.innerHTML = '<p class="empty-state">No results yet.</p>';
     setStatus("Application loaded", "pass");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Application file could not be loaded.";
     renderError(message);
     setStatus("Needs attention", "error");
-    resetApplicationPreview(file.name);
+    resetApplicationPreview();
   }
 });
 
