@@ -54,7 +54,15 @@ def test_frontend_javascript_resets_invalid_and_successful_preview_state():
 
     assert 'results.innerHTML = \'<p class="empty-state">No results yet.</p>\'' in javascript
     assert 'resetApplicationPreview(file.name)' not in javascript
-    assert 'attachment.content_type.toLowerCase().startsWith("image/")' in javascript
+
+
+def test_frontend_javascript_matches_backend_image_content_type_validation():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert 'const contentType = attachment.content_type.trim().toLowerCase()' in javascript
+    assert '!contentType.startsWith("image/") || contentType === "image/"' in javascript
+    assert "attachment.content_type.toLowerCase().startsWith" not in javascript
+    assert "contentType" in javascript
 
 
 def test_disabled_verify_button_does_not_use_wait_cursor():

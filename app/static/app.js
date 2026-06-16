@@ -170,11 +170,13 @@ function validateApplication(application) {
   requireNonblankString(attachment.content_type, "label_attachment.content_type");
   requireNonblankString(attachment.data, "label_attachment.data");
 
-  if (!attachment.content_type.toLowerCase().startsWith("image/")) {
+  const contentType = attachment.content_type.trim().toLowerCase();
+
+  if (!contentType.startsWith("image/") || contentType === "image/") {
     throw new Error("label_attachment.content_type must be an image type.");
   }
 
-  return attachment;
+  return { ...attachment, content_type: contentType };
 }
 
 function renderApplicationFields(application) {
