@@ -10,7 +10,7 @@
     <header class="app-header">
       <div>
         <h1>Label Verifier</h1>
-        <p>Guided review for alcohol label compliance fields.</p>
+        <p>Upload a standardized liquor application file for label verification.</p>
       </div>
       <output id="status" class="status" aria-live="polite">Ready</output>
     </header>
@@ -18,71 +18,41 @@
     <main class="workspace">
       <section class="panel upload-panel" aria-labelledby="uploadTitle">
         <div class="panel-heading">
-          <h2 id="uploadTitle">Label Source</h2>
-          <p>Upload a label image for OCR review.</p>
+          <h2 id="uploadTitle">Application Source</h2>
+          <p>Upload a standardized JSON application with a base64 label attachment.</p>
         </div>
 
-        <label class="drop-zone" for="labelImage">
-          <span class="drop-title">Choose label image</span>
-          <span class="drop-copy">PNG, JPG, or another image file</span>
-          <input id="labelImage" name="label_image" type="file" accept="image/*">
+        <label class="drop-zone" for="applicationFile">
+          <span class="drop-title">Choose application file</span>
+          <span class="drop-copy">JSON with expected fields and embedded label image</span>
+          <input id="applicationFile" name="application_file" type="file" accept=".json,application/json">
         </label>
 
         <div class="preview-frame">
-          <img id="preview" alt="Selected label preview">
-          <p id="previewPlaceholder">No image selected</p>
+          <img id="preview" alt="Embedded label preview">
+          <p id="previewPlaceholder">No application selected</p>
         </div>
       </section>
 
       <section class="panel review-panel" aria-labelledby="fieldsTitle">
         <div class="panel-heading">
-          <h2 id="fieldsTitle">Expected Fields</h2>
-          <p>Enter the values that should appear on the label.</p>
+          <h2 id="fieldsTitle">Application Fields</h2>
+          <p>Review the read-only values loaded from the application file.</p>
         </div>
 
-        <form id="expectedFields">
-          <div class="field-grid">
-            <label>
-              <span>Brand name</span>
-              <input name="brand_name" type="text" autocomplete="organization">
-            </label>
+        <form id="applicationForm">
+          <div id="applicationFields" class="application-fields" hidden></div>
 
-            <label>
-              <span>Class/type</span>
-              <input name="class_type" type="text">
-            </label>
-
-            <label>
-              <span>Alcohol content</span>
-              <input name="alcohol_content" type="text" placeholder="45% Alc./Vol. (90 Proof)">
-            </label>
-
-            <label>
-              <span>Net contents</span>
-              <input name="net_contents" type="text" placeholder="750 mL">
-            </label>
-
-            <label class="wide-field">
-              <span>Bottler/producer address</span>
-              <input name="bottler_address" type="text">
-            </label>
-
-            <label>
-              <span>Country of origin</span>
-              <input name="country_of_origin" type="text">
-            </label>
-
-            <div class="wide-field fixed-field">
-              <span>Government warning</span>
-              <pre>GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL,
+          <div class="wide-field fixed-field">
+            <span>Government warning</span>
+            <pre>GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL,
 WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES DURING
 PREGNANCY BECAUSE OF THE RISK OF BIRTH DEFECTS. (2) CONSUMPTION
 OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR
 OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS.</pre>
-            </div>
           </div>
 
-          <button id="verifyButton" type="submit">Verify Label</button>
+          <button id="verifyButton" type="submit" disabled>Verify Label</button>
         </form>
       </section>
 

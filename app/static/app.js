@@ -1,8 +1,9 @@
-const labelImage = document.querySelector("#labelImage");
+const applicationFile = document.querySelector("#applicationFile");
 const preview = document.querySelector("#preview");
 const previewFrame = document.querySelector(".preview-frame");
 const previewPlaceholder = document.querySelector("#previewPlaceholder");
-const expectedFields = document.querySelector("#expectedFields");
+const applicationForm = document.querySelector("#applicationForm");
+const applicationFields = document.querySelector("#applicationFields");
 const verifyButton = document.querySelector("#verifyButton");
 const statusOutput = document.querySelector("#status");
 const results = document.querySelector("#results");
@@ -15,6 +16,23 @@ const fieldOrder = [
   "bottler_address",
   "country_of_origin",
   "government_warning",
+];
+
+const applicationFieldOrder = [
+  ["brand_name", "Brand name"],
+  ["class_type", "Class/type"],
+  ["alcohol_content", "Alcohol content"],
+  ["net_contents", "Net contents"],
+  ["bottler_address", "Bottler/producer address"],
+  ["country_of_origin", "Country of origin"],
+];
+
+const requiredApplicationFields = [
+  "brand_name",
+  "class_type",
+  "alcohol_content",
+  "net_contents",
+  "bottler_address",
 ];
 
 function escapeHtml(value) {
@@ -118,30 +136,108 @@ function getApiErrorMessage(errorBody, fallback) {
   return fallback;
 }
 
-labelImage.addEventListener("change", () => {
-  const file = labelImage.files[0];
+function resetApplicationPreview(filename = "No application selected") {
+  preview.removeAttribute("src");
+  previewFrame.classList.remove("has-image");
+  previewPlaceholder.textContent = filename;
+  applicationFields.hidden = true;
+  applicationFields.innerHTML = "";
+  verifyButton.disabled = true;
+}
+
+function requireNonblankString(value, label) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${label} is required in the application file.`);
+  }
+}
+
+function validateApplication(application) {
+  if (!application || typeof application !== "object" || Array.isArray(application)) {
+    throw new Error("Application file must contain a JSON object.");
+  }
+
+  requiredApplicationFields.forEach((fieldName) => {
+    requireNonblankString(application[fieldName], fieldName);
+  });
+
+  const attachment = application.label_attachment;
+
+  if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) {
+    throw new Error("Application file must include a label_attachment object.");
+  }
+
+  requireNonblankString(attachment.filename, "label_attachment.filename");
+  requireNonblankString(attachment.content_type, "label_attachment.content_type");
+  requireNonblankString(attachment.data, "label_attachment.data");
+
+  if (!attachment.content_type.startsWith("image/")) {
+    throw new Error("label_attachment.content_type must be an image type.");
+  }
+
+  return attachment;
+}
+
+function renderApplicationFields(application) {
+  applicationFields.innerHTML = applicationFieldOrder
+    .map(([fieldName, label]) => {
+      const value = application[fieldName];
+      const isEmpty = typeof value !== "string" || !value.trim();
+      const valueMarkup = isEmpty
+        ? '<span class="field-value empty-value">Not provided</span>'
+        : `<span class="field-value">${escapeHtml(value)}</span>`;
+
+      return `
+        <div class="readonly-field">
+          <span>${escapeHtml(label)}</span>
+          ${valueMarkup}
+        </div>
+      `;
+    })
+    .join("");
+  applicationFields.hidden = false;
+}
+
+applicationFile.addEventListener("change", async () => {
+  const file = applicationFile.files[0];
+
+  resetApplicationPreview();
 
   if (!file) {
-    preview.removeAttribute("src");
-    previewFrame.classList.remove("has-image");
-    previewPlaceholder.textContent = "No image selected";
+    setStatus("Ready");
     return;
   }
 
-  preview.src = URL.createObjectURL(file);
-  previewFrame.classList.add("has-image");
-  previewPlaceholder.textContent = file.name;
+  try {
+    const application = JSON.parse(await file.text());
+    const attachment = validateApplication(application);
+
+    renderApplicationFields(application);
+    preview.src = `data:${attachment.content_type};base64,${attachment.data}`;
+    previewFrame.classList.add("has-image");
+    previewPlaceholder.textContent = attachment.filename;
+    verifyButton.disabled = false;
+    setStatus("Application loaded", "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Application file could not be loaded.";
+    renderError(message);
+    setStatus("Needs attention", "error");
+    resetApplicationPreview(file.name);
+  }
 });
 
-expectedFields.addEventListener("submit", async (event) => {
+applicationForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const body = new FormData(expectedFields);
-  const file = labelImage.files[0];
+  const file = applicationFile.files[0];
 
-  if (file) {
-    body.append("label_image", file);
+  if (!file) {
+    renderError("Upload a liquor application JSON file.");
+    setStatus("Needs attention", "error");
+    return;
   }
+
+  const body = new FormData();
+  body.append("application_file", file);
 
   verifyButton.disabled = true;
   setStatus("Verifying...", "busy");
@@ -158,7 +254,7 @@ expectedFields.addEventListener("submit", async (event) => {
     }
 
     if (!response.ok) {
-      const message = getApiErrorMessage(responseBody, "Verification failed. Please check the form and try again.");
+      const message = getApiErrorMessage(responseBody, "Verification failed. Please check the application and try again.");
       throw new Error(message);
     }
 
