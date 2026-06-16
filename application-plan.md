@@ -2,15 +2,15 @@
 
 ## Product Direction
 
-Build a standalone guided-review web application that lets a compliance agent verify one alcohol label at a time. The first version should make the routine review path obvious: upload a label image, enter the expected application values, run verification, and review a clear pass/fail result.
+Build a standalone guided-review web application that lets a compliance agent verify one alcohol label at a time. The first version should make the routine review path obvious: upload one liquor application JSON file containing expected application fields and an embedded label attachment, run verification, and review a clear pass/fail result.
 
 This plan intentionally prioritizes a usable core workflow over batch processing, dashboards, or COLA integration.
 
 ## Target User Workflow
 
 1. Agent opens the application.
-2. Agent uploads one label image.
-3. Agent enters or pastes the expected application fields.
+2. Agent uploads one liquor application JSON file.
+3. The app previews the application fields and embedded label attachment.
 4. Agent clicks `Verify Label`.
 5. The app extracts visible label text from the image.
 6. The app compares extracted text against the expected fields.
@@ -25,8 +25,8 @@ This plan intentionally prioritizes a usable core workflow over batch processing
 The first version should use a single-page guided review layout:
 
 - Header with the application name and a short status area
-- Left side: label upload and image preview
-- Right side: expected application fields
+- Left side: application JSON upload and embedded label preview
+- Right side: read-only application field preview
 - Bottom or right rail: verification results
 
 The screen should avoid hidden navigation, multi-step wizards, or complex menus. Everything needed for a single review should be visible at once.
@@ -43,11 +43,11 @@ The app should support these expected application fields:
 - Country of origin
 - Government health warning statement
 
-For the prototype, fields can be entered manually in a form. A later version could support CSV import, JSON paste, or direct integration with application records.
+For the prototype, expected values come from the uploaded application JSON and are shown as application-sourced fields. A later version could support CSV import, JSON paste, or direct integration with application records.
 
 ## Label Processing
 
-The app should process the uploaded label image using an OCR or vision extraction layer.
+The app should process the embedded label attachment using an OCR or vision extraction layer.
 
 The extraction result should include:
 
@@ -111,7 +111,7 @@ The app should handle common failures clearly:
 - No readable text found
 - Missing expected application fields
 
-Errors should tell the agent what happened and what to do next, such as uploading a clearer image or filling in a required field.
+Errors should tell the agent what happened and what to do next, such as uploading an application JSON with a clearer embedded label attachment or required application field.
 
 ## Performance Target
 
@@ -124,7 +124,7 @@ The first implementation should measure and display processing time internally d
 For the prototype:
 
 - Do not require accounts or authentication.
-- Do not persist uploaded labels by default.
+- Do not persist embedded label attachments by default.
 - Do not retain sensitive application data after the review session.
 - Keep all review state in memory or browser session state unless explicit export is added later.
 
@@ -133,9 +133,9 @@ For the prototype:
 A practical prototype can be built as a small web application with:
 
 - Frontend: single-page review interface
-- Backend: upload handling, OCR/vision extraction, verification rules
+- Backend: application JSON upload handling, OCR/vision extraction, verification rules
 - Verification module: deterministic comparison functions
-- Test fixtures: sample label images and expected application data
+- Test fixtures: sample application JSON files with embedded label attachments and expected application data
 
 The extraction layer should be abstracted behind a simple interface:
 
@@ -150,9 +150,9 @@ This keeps the app usable even if the OCR provider changes.
 
 The first usable version should include:
 
-- Single image upload
-- Image preview
-- Manual expected-field form
+- Single JSON application upload
+- Embedded label preview
+- Read-only application field preview
 - OCR or mocked text extraction path
 - Field-by-field verification
 - Strict government warning check
