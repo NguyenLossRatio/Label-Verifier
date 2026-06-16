@@ -101,7 +101,7 @@ Example:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/verify \
-  -F application_file=@path/to/application.json
+  -F 'application_file=@path/to/application.json;type=application/json'
 ```
 
 ## Test

@@ -3,6 +3,7 @@ import json
 
 from fastapi.testclient import TestClient
 
+from app.application_upload import MAX_APPLICATION_JSON_BYTES
 from app.constants import REQUIRED_GOVERNMENT_WARNING
 from app.extraction import ExtractionError
 from app.main import app
@@ -134,6 +135,24 @@ def test_verify_endpoint_rejects_invalid_json():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Application file is not valid JSON."
+
+
+def test_verify_endpoint_rejects_oversized_application_upload():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/verify",
+        files={
+            "application_file": (
+                "application.json",
+                b" " * (MAX_APPLICATION_JSON_BYTES + 1),
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Application file is too large."
 
 
 def test_verify_endpoint_rejects_missing_required_application_field():

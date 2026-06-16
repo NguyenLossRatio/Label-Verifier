@@ -1,9 +1,16 @@
 import base64
+from io import BytesIO
 import json
 
 import pytest
+from PIL import Image
 
-from app.application_upload import ApplicationUploadError, parse_application_upload
+from app.application_upload import (
+    ApplicationUploadError,
+    MAX_LABEL_IMAGE_BYTES,
+    MAX_LABEL_IMAGE_PIXELS,
+    parse_application_upload,
+)
 from app.constants import REQUIRED_GOVERNMENT_WARNING
 
 
@@ -143,6 +150,41 @@ def test_parse_application_upload_rejects_base64_encoded_non_image_bytes():
     with pytest.raises(
         ApplicationUploadError,
         match="Label attachment data must be base64-encoded image bytes.",
+    ):
+        parse_application_upload(encode_application(payload))
+
+
+def test_parse_application_upload_rejects_oversized_label_attachment_data():
+    payload = application_payload(
+        label_attachment={
+            "filename": "label.png",
+            "content_type": "image/png",
+            "data": base64.b64encode(b"x" * (MAX_LABEL_IMAGE_BYTES + 1)).decode("ascii"),
+        }
+    )
+
+    with pytest.raises(
+        ApplicationUploadError,
+        match="Label attachment is too large.",
+    ):
+        parse_application_upload(encode_application(payload))
+
+
+def test_parse_application_upload_rejects_oversized_label_image_dimensions():
+    image_side = int(MAX_LABEL_IMAGE_PIXELS**0.5) + 1
+    image_bytes = BytesIO()
+    Image.new("RGB", (image_side, image_side), "white").save(image_bytes, format="PNG")
+    payload = application_payload(
+        label_attachment={
+            "filename": "label.png",
+            "content_type": "image/png",
+            "data": base64.b64encode(image_bytes.getvalue()).decode("ascii"),
+        }
+    )
+
+    with pytest.raises(
+        ApplicationUploadError,
+        match="Label attachment image dimensions are too large.",
     ):
         parse_application_upload(encode_application(payload))
 

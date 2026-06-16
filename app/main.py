@@ -5,7 +5,11 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.application_upload import ApplicationUploadError, parse_application_upload
+from app.application_upload import (
+    ApplicationUploadError,
+    MAX_APPLICATION_JSON_BYTES,
+    parse_application_upload,
+)
 from app.extraction import (
     ExtractionError,
     extract_field_candidates,
@@ -54,7 +58,8 @@ async def verify(
         )
 
     try:
-        parsed_application = parse_application_upload(await application_file.read())
+        raw_application = await application_file.read(MAX_APPLICATION_JSON_BYTES + 1)
+        parsed_application = parse_application_upload(raw_application)
     except ApplicationUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

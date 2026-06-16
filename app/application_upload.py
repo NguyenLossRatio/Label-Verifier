@@ -50,9 +50,15 @@ REQUIRED_TEXT_FIELDS = (
     "net_contents",
     "bottler_address",
 )
+MAX_APPLICATION_JSON_BYTES = 10 * 1024 * 1024
+MAX_LABEL_IMAGE_BYTES = 6 * 1024 * 1024
+MAX_LABEL_IMAGE_PIXELS = 16_000_000
 
 
 def parse_application_upload(raw_json: bytes) -> ParsedApplication:
+    if len(raw_json) > MAX_APPLICATION_JSON_BYTES:
+        raise ApplicationUploadError("Application file is too large.")
+
     payload = _load_json_object(raw_json)
     _validate_required_text_fields(payload)
     attachment_payload = _validate_attachment_payload(payload)
@@ -117,6 +123,10 @@ def _validate_attachment_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _decode_label_bytes(encoded_data: str) -> bytes:
+    max_encoded_length = ((MAX_LABEL_IMAGE_BYTES + 2) // 3) * 4
+    if len(encoded_data) > max_encoded_length:
+        raise ApplicationUploadError("Label attachment is too large.")
+
     try:
         label_bytes = base64.b64decode(encoded_data, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -125,6 +135,9 @@ def _decode_label_bytes(encoded_data: str) -> bytes:
     if not label_bytes:
         raise ApplicationUploadError("Label attachment data must be base64-encoded image bytes.")
 
+    if len(label_bytes) > MAX_LABEL_IMAGE_BYTES:
+        raise ApplicationUploadError("Label attachment is too large.")
+
     _validate_image_bytes(label_bytes)
     return label_bytes
 
@@ -132,6 +145,11 @@ def _decode_label_bytes(encoded_data: str) -> bytes:
 def _validate_image_bytes(label_bytes: bytes) -> None:
     try:
         with Image.open(BytesIO(label_bytes)) as image:
+            width, height = image.size
+            if width * height > MAX_LABEL_IMAGE_PIXELS:
+                raise ApplicationUploadError("Label attachment image dimensions are too large.")
             image.verify()
+    except ApplicationUploadError:
+        raise
     except (SyntaxError, UnidentifiedImageError, OSError, ValueError) as exc:
         raise ApplicationUploadError("Label attachment data must be base64-encoded image bytes.") from exc
