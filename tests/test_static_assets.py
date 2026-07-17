@@ -19,8 +19,8 @@ def test_application_upload_html_has_required_controls():
 def test_application_upload_html_links_static_assets_and_removes_manual_expected_inputs():
     html = Path("app/static/index.html").read_text()
 
-    assert 'href="/static/styles.css"' in html
-    assert 'src="/static/app.js"' in html
+    assert 'href="/static/styles.css?v=' in html
+    assert 'src="/static/app.js?v=' in html
     assert 'id="status"' in html
     assert "Application Source" in html
     assert "Application Fields" in html
