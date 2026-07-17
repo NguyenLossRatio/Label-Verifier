@@ -23,10 +23,14 @@
         </div>
 
         <label class="drop-zone" for="applicationFile">
-          <span class="drop-title">Choose application file</span>
-          <span class="drop-copy">JSON with expected fields and embedded label image</span>
-          <input id="applicationFile" name="application_file" type="file" accept=".json,application/json">
+          <span class="drop-title">Choose application files</span>
+          <span class="drop-copy">JSON applications with expected fields and embedded label images</span>
+          <input id="applicationFile" name="application_file" type="file" accept=".json,application/json" multiple>
         </label>
+
+        <div id="applicationQueue" class="application-queue" aria-live="polite">
+          <p class="empty-state">No applications selected.</p>
+        </div>
 
         <div class="preview-frame">
           <img id="preview" alt="Embedded label preview">
@@ -52,7 +56,7 @@ OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR
 OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS.</pre>
           </div>
 
-          <button id="verifyButton" type="submit" disabled>Verify Label</button>
+          <button id="verifyButton" type="submit" disabled>Verify Selected Applications</button>
         </form>
       </section>
 

@@ -4,11 +4,15 @@ const previewFrame = document.querySelector(".preview-frame");
 const previewPlaceholder = document.querySelector("#previewPlaceholder");
 const applicationForm = document.querySelector("#applicationForm");
 const applicationFields = document.querySelector("#applicationFields");
+const applicationQueue = document.querySelector("#applicationQueue");
 const verifyButton = document.querySelector("#verifyButton");
 const statusOutput = document.querySelector("#status");
 const results = document.querySelector("#results");
 let currentApplicationValid = false;
 let applicationVersion = 0;
+let selectedApplications = [];
+let activeApplicationIndex = -1;
+let batchRunning = false;
 
 const fieldOrder = [
   "brand_name",
@@ -48,6 +52,10 @@ function escapeHtml(value) {
 
 function formatStatus(value) {
   return String(value || "unknown").replaceAll("_", " ");
+}
+
+function pluralize(count, singular, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
 }
 
 function setStatus(message, state = "") {
@@ -93,7 +101,7 @@ function renderFieldRow(result, detectedValue = "") {
   `;
 }
 
-function renderResults(data) {
+function renderResultMarkup(data) {
   const overallStatus = data?.overall_status || "needs_review";
   const processingMs = Number(data?.processing_ms ?? 0);
   const extractionMs = Number(data?.extraction_ms ?? 0);
@@ -104,7 +112,7 @@ function renderResults(data) {
     .map((fieldName) => renderFieldRow(fieldResults[fieldName], fieldGuesses[fieldName]))
     .join("");
 
-  results.innerHTML = `
+  return `
     <div class="summary">
       <span class="badge ${escapeHtml(overallStatus)}">${escapeHtml(formatStatus(overallStatus))}</span>
       <span class="meta">Extraction: ${escapeHtml(extractionMs)} ms</span>
@@ -118,6 +126,10 @@ function renderResults(data) {
       <pre class="raw-text">${escapeHtml(data?.raw_text || "")}</pre>
     </details>
   `;
+}
+
+function renderResults(data) {
+  results.innerHTML = renderResultMarkup(data);
 }
 
 function getApiErrorMessage(errorBody, fallback) {
@@ -234,104 +246,375 @@ function renderApplicationFields(application) {
   applicationFields.hidden = false;
 }
 
-applicationFile.addEventListener("change", async () => {
-  applicationVersion += 1;
-  const selectedApplicationVersion = applicationVersion;
-  const file = applicationFile.files[0];
+function createApplicationItem(file, index) {
+  return {
+    id: `${Date.now()}-${index}`,
+    file,
+    filename: file.name,
+    application: null,
+    attachment: null,
+    valid: false,
+    error: "",
+    result: null,
+    status: "loading",
+  };
+}
 
-  resetApplicationPreview();
+function getQueueStatus(item) {
+  if (item.status === "verifying") {
+    return "Verifying";
+  }
 
-  if (!file) {
-    setStatus("Ready");
+  if (item.result?.overall_status) {
+    return formatStatus(item.result.overall_status);
+  }
+
+  if (!item.valid || item.error) {
+    return item.status === "loading" ? "Loading" : "Invalid";
+  }
+
+  return "Queued";
+}
+
+function getQueueStatusClass(item) {
+  if (item.status === "verifying") {
+    return "needs_review";
+  }
+
+  if (item.result?.overall_status) {
+    return item.result.overall_status;
+  }
+
+  if (!item.valid || item.error) {
+    return item.status === "loading" ? "needs_review" : "error";
+  }
+
+  return "queued";
+}
+
+function renderApplicationQueue() {
+  if (!selectedApplications.length) {
+    applicationQueue.innerHTML = '<p class="empty-state">No applications selected.</p>';
+    return;
+  }
+
+  applicationQueue.innerHTML = `
+    <div class="queue-heading">
+      <strong>${escapeHtml(selectedApplications.length)} ${escapeHtml(pluralize(selectedApplications.length, "application"))}</strong>
+      <span class="meta">${escapeHtml(selectedApplications.filter((item) => item.valid).length)} ready</span>
+    </div>
+    <div class="queue-list">
+      ${selectedApplications
+        .map((item, index) => {
+          const isActive = index === activeApplicationIndex;
+          const statusClass = getQueueStatusClass(item);
+          const status = getQueueStatus(item);
+
+          return `
+            <button
+              class="queue-item ${isActive ? "active" : ""}"
+              type="button"
+              data-application-index="${escapeHtml(index)}"
+              aria-current="${isActive ? "true" : "false"}"
+            >
+              <span class="queue-name">${escapeHtml(item.filename)}</span>
+              <span class="field-status ${escapeHtml(statusClass)}">${escapeHtml(status)}</span>
+            </button>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function setVerifyAvailability() {
+  currentApplicationValid = selectedApplications.some((item) => item.valid);
+  verifyButton.disabled = !currentApplicationValid || batchRunning;
+}
+
+async function showActiveApplication(selectedApplicationVersion = applicationVersion) {
+  const item = selectedApplications[activeApplicationIndex];
+  resetApplicationPreview(item?.filename || "No application selected");
+
+  if (!item) {
+    setVerifyAvailability();
+    return;
+  }
+
+  if (!item.valid) {
+    renderError(item.error || "Application file could not be loaded.");
+    renderApplicationQueue();
+    setVerifyAvailability();
     return;
   }
 
   try {
-    const applicationText = await file.text();
-
-    if (selectedApplicationVersion !== applicationVersion) {
-      return;
-    }
-
-    const application = JSON.parse(applicationText);
-    const attachment = validateApplication(application);
-
-    renderApplicationFields(application);
-    await loadAttachmentPreview(attachment);
+    renderApplicationFields(item.application);
+    await loadAttachmentPreview(item.attachment);
 
     if (selectedApplicationVersion !== applicationVersion) {
       return;
     }
 
     previewFrame.classList.add("has-image");
-    previewPlaceholder.textContent = attachment.filename;
-    currentApplicationValid = true;
-    verifyButton.disabled = !currentApplicationValid;
-    results.innerHTML = '<p class="empty-state">No results yet.</p>';
-    setStatus("Application loaded", "pass");
+    previewPlaceholder.textContent = item.attachment.filename;
+    renderApplicationQueue();
+    renderBatchResults();
+    setVerifyAvailability();
   } catch (error) {
     if (selectedApplicationVersion !== applicationVersion) {
       return;
     }
 
-    const message = error instanceof Error ? error.message : "Application file could not be loaded.";
-    renderError(message);
-    setStatus("Needs attention", "error");
-    resetApplicationPreview();
+    item.valid = false;
+    item.status = "error";
+    item.error = error instanceof Error ? error.message : "Application file could not be loaded.";
+    renderError(item.error);
+    renderApplicationQueue();
+    setVerifyAvailability();
   }
+}
+
+function renderSelectedApplicationResult() {
+  const item = selectedApplications[activeApplicationIndex];
+
+  if (!item) {
+    return '<p class="empty-state">Select an application to review its results.</p>';
+  }
+
+  const statusClass = getQueueStatusClass(item);
+  const status = getQueueStatus(item);
+  const body = item.result
+    ? renderResultMarkup(item.result)
+    : item.error
+      ? `<div class="error-box" role="alert">${escapeHtml(item.error)}</div>`
+      : '<p class="empty-state">Waiting for verification.</p>';
+
+  return `
+    <article class="selected-result-card">
+      <div class="batch-result-heading">
+        <h3>${escapeHtml(item.filename)}</h3>
+        <span class="field-status ${escapeHtml(statusClass)}">${escapeHtml(status)}</span>
+      </div>
+      ${body}
+    </article>
+  `;
+}
+
+function renderBatchResults() {
+  if (!selectedApplications.length) {
+    results.innerHTML = '<p class="empty-state">No results yet.</p>';
+    return;
+  }
+
+  const completed = selectedApplications.filter((item) => item.result || item.error);
+  const passed = selectedApplications.filter((item) => item.result?.overall_status === "pass").length;
+  const review = selectedApplications.filter(
+    (item) => item.result && item.result.overall_status !== "pass",
+  ).length;
+  const errors = selectedApplications.filter((item) => item.error).length;
+  const summaryText = completed.length
+    ? `${completed.length} of ${selectedApplications.length} processed`
+    : "Ready to verify";
+
+  results.innerHTML = `
+    <div class="summary batch-summary">
+      <span class="badge ${errors ? "error" : review ? "needs_review" : passed ? "pass" : "needs_review"}">
+        ${escapeHtml(summaryText)}
+      </span>
+      <span class="meta">${escapeHtml(passed)} passed</span>
+      <span class="meta">${escapeHtml(review)} need review</span>
+      <span class="meta">${escapeHtml(errors)} failed</span>
+    </div>
+    <div class="batch-results">
+      ${renderSelectedApplicationResult()}
+    </div>
+  `;
+}
+
+async function verifyApplication(item) {
+  const file = item.file;
+  const body = new FormData();
+  body.append("application_file", file);
+  const response = await fetch("/api/verify", { method: "POST", body });
+  let responseBody = null;
+
+  try {
+    responseBody = await response.json();
+  } catch (_error) {
+    responseBody = null;
+  }
+
+  if (!response.ok) {
+    const message = getApiErrorMessage(responseBody, "Verification failed. Please check the application and try again.");
+    throw new Error(message);
+  }
+
+  return responseBody;
+}
+
+async function loadSelectedApplications(files, selectedApplicationVersion) {
+  selectedApplications = Array.from(files).map(createApplicationItem);
+  activeApplicationIndex = selectedApplications.length ? 0 : -1;
+  renderApplicationQueue();
+  resetApplicationPreview();
+
+  if (!selectedApplications.length) {
+    results.innerHTML = '<p class="empty-state">No results yet.</p>';
+    setStatus("Ready");
+    setVerifyAvailability();
+    return;
+  }
+
+  for (const item of selectedApplications) {
+    try {
+      const applicationText = await item.file.text();
+
+      if (selectedApplicationVersion !== applicationVersion) {
+        return;
+      }
+
+      const application = JSON.parse(applicationText);
+      const attachment = validateApplication(application);
+      item.application = application;
+      item.attachment = attachment;
+      item.valid = true;
+      item.status = "queued";
+    } catch (error) {
+      if (selectedApplicationVersion !== applicationVersion) {
+        return;
+      }
+
+      item.valid = false;
+      item.status = "error";
+      item.error = error instanceof Error ? error.message : "Application file could not be loaded.";
+    }
+  }
+
+  if (selectedApplicationVersion !== applicationVersion) {
+    return;
+  }
+
+  const firstValidIndex = selectedApplications.findIndex((item) => item.valid);
+  activeApplicationIndex = firstValidIndex >= 0 ? firstValidIndex : 0;
+  renderApplicationQueue();
+  renderBatchResults();
+  await showActiveApplication(selectedApplicationVersion);
+
+  if (selectedApplicationVersion !== applicationVersion) {
+    return;
+  }
+
+  const validCount = selectedApplications.filter((item) => item.valid).length;
+  const invalidCount = selectedApplications.length - validCount;
+
+  if (validCount) {
+    const invalidNote = invalidCount ? `, ${invalidCount} invalid` : "";
+    setStatus(`${validCount} ${pluralize(validCount, "application")} loaded${invalidNote}`, "pass");
+  } else {
+    setStatus("Needs attention", "error");
+  }
+
+  setVerifyAvailability();
+}
+
+applicationQueue.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-application-index]");
+
+  if (!button || batchRunning) {
+    return;
+  }
+
+  const nextIndex = Number(button.dataset.applicationIndex);
+
+  if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= selectedApplications.length) {
+    return;
+  }
+
+  activeApplicationIndex = nextIndex;
+  await showActiveApplication(applicationVersion);
+});
+
+applicationFile.addEventListener("change", async () => {
+  applicationVersion += 1;
+  const selectedApplicationVersion = applicationVersion;
+
+  batchRunning = false;
+  await loadSelectedApplications(applicationFile.files, selectedApplicationVersion);
 });
 
 applicationForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const file = applicationFile.files[0];
+  const validApplications = selectedApplications.filter((item) => item.valid);
 
-  if (!file) {
-    renderError("Upload a liquor application JSON file.");
+  if (!validApplications.length) {
+    renderError("Upload at least one valid liquor application JSON file.");
     setStatus("Needs attention", "error");
     return;
   }
 
-  const body = new FormData();
-  body.append("application_file", file);
   const submittedApplicationVersion = applicationVersion;
-
+  batchRunning = true;
   verifyButton.disabled = true;
+  applicationFile.disabled = true;
+  validApplications.forEach((item) => {
+    item.result = null;
+    item.error = "";
+    item.status = "queued";
+  });
   setStatus("Verifying...", "busy");
   results.innerHTML = '<p class="empty-state">Review in progress...</p>';
+  renderApplicationQueue();
+  renderBatchResults();
 
   try {
-    const response = await fetch("/api/verify", { method: "POST", body });
-    let responseBody = null;
+    for (const item of validApplications) {
+      if (submittedApplicationVersion !== applicationVersion) {
+        return;
+      }
 
-    try {
-      responseBody = await response.json();
-    } catch (_error) {
-      responseBody = null;
+      item.status = "verifying";
+      activeApplicationIndex = selectedApplications.indexOf(item);
+      renderApplicationQueue();
+      renderBatchResults();
+
+      try {
+        const responseBody = await verifyApplication(item);
+
+        if (submittedApplicationVersion !== applicationVersion) {
+          return;
+        }
+
+        item.result = responseBody;
+        item.status = responseBody?.overall_status || "needs_review";
+      } catch (error) {
+        if (submittedApplicationVersion !== applicationVersion) {
+          return;
+        }
+
+        item.status = "error";
+        item.error = error instanceof Error ? error.message : "Verification failed.";
+      }
+
+      renderApplicationQueue();
+      renderBatchResults();
     }
 
     if (submittedApplicationVersion !== applicationVersion) {
       return;
     }
 
-    if (!response.ok) {
-      const message = getApiErrorMessage(responseBody, "Verification failed. Please check the application and try again.");
-      throw new Error(message);
-    }
-
-    renderResults(responseBody);
-    setStatus(formatStatus(responseBody.overall_status), responseBody.overall_status);
-  } catch (error) {
-    if (submittedApplicationVersion !== applicationVersion) {
-      return;
-    }
-
-    const message = error instanceof Error ? error.message : "Verification failed.";
-    renderError(message);
-    setStatus("Needs attention", "error");
+    const hasErrors = selectedApplications.some((item) => item.error);
+    const needsReview = selectedApplications.some((item) => item.result && item.result.overall_status !== "pass");
+    const finalState = hasErrors ? "error" : needsReview ? "needs_review" : "pass";
+    setStatus("Batch complete", finalState);
   } finally {
     if (submittedApplicationVersion === applicationVersion) {
-      verifyButton.disabled = !currentApplicationValid;
+      batchRunning = false;
+      applicationFile.disabled = false;
+      setVerifyAvailability();
+      renderApplicationQueue();
     }
   }
 });

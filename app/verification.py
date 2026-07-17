@@ -38,10 +38,24 @@ def _find_phrase_match(raw_text: str, expected: str) -> str | None:
         return ""
 
     normalized_expected = normalize_text(expected)
-    for line in raw_text.splitlines():
-        stripped = line.strip()
+    lines = [line.strip() for line in raw_text.splitlines()]
+
+    for stripped in lines:
         if stripped and _has_boundary_match(normalize_text(stripped), normalized_expected):
             return stripped
+
+    window_matches = []
+    for index in range(len(lines)):
+        for window_size in (2, 3):
+            chunk_lines = [line for line in lines[index : index + window_size] if line]
+            if len(chunk_lines) < window_size:
+                continue
+            chunk = " ".join(chunk_lines)
+            if _has_boundary_match(normalize_text(chunk), normalized_expected):
+                window_matches.append(chunk)
+
+    if window_matches:
+        return min(window_matches, key=lambda match: len(normalize_text(match)))
 
     if _has_boundary_match(normalize_text(raw_text), normalized_expected):
         return raw_text.strip()

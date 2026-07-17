@@ -151,6 +151,38 @@ def test_bottler_address_can_match_structured_extracted_guess_when_raw_ocr_is_no
     assert bottler_address.extracted == extracted_guess
 
 
+def test_bottler_address_match_across_lines_returns_minimal_segment():
+    raw_text = (
+        "ENJOY CHILLED.\n"
+        "PRODUCED IN CANADA\n"
+        "IMPORTED BY: 12345 IMPORTS\n"
+        "MIAMI, FL\n"
+        "GOVERNMENT WARNING:\n"
+        "RUM WITH\n"
+        "COCONUT LIQUEUR\n"
+        "18% ALC/VOL.\n"
+        "200 ML\n"
+    )
+
+    report = verify_label_text(
+        expected_fields(
+            brand_name="",
+            class_type="",
+            alcohol_content="",
+            net_contents="",
+            bottler_address="Imported by 12345 Imports, Miami, FL",
+            government_warning="",
+        ),
+        raw_text,
+    )
+
+    bottler_address = report.field_results["bottler_address"]
+    assert bottler_address.status == "pass"
+    assert bottler_address.extracted == "IMPORTED BY: 12345 IMPORTS MIAMI, FL"
+    assert "GOVERNMENT WARNING" not in bottler_address.extracted
+    assert "RUM WITH" not in bottler_address.extracted
+
+
 def test_blank_country_reports_detected_guess_for_testing():
     report = verify_label_text(
         expected_fields(country_of_origin=""),

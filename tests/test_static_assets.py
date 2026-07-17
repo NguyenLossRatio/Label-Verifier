@@ -7,8 +7,10 @@ def test_application_upload_html_has_required_controls():
     assert 'id="applicationFile"' in html
     assert 'name="application_file"' in html
     assert 'accept=".json,application/json"' in html
+    assert "multiple" in html
     assert 'id="applicationForm"' in html
     assert 'id="applicationFields"' in html
+    assert 'id="applicationQueue"' in html
     assert 'id="verifyButton" type="submit" disabled' in html
     assert 'id="results"' in html
     assert 'id="rawTextOverride"' not in html
@@ -47,6 +49,26 @@ def test_frontend_javascript_posts_application_file_to_verify_endpoint():
     assert "renderApplicationFields" in javascript
     assert "field_guesses" in javascript
     assert "fieldGuesses" in javascript
+
+
+def test_frontend_javascript_processes_batch_files_sequentially():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert "selectedApplications" in javascript
+    assert "for (const item of validApplications)" in javascript
+    assert "await verifyApplication(item)" in javascript
+    assert "renderApplicationQueue" in javascript
+    assert "renderBatchResults" in javascript
+    assert "Batch complete" in javascript
+
+
+def test_frontend_javascript_only_renders_selected_application_details():
+    javascript = Path("app/static/app.js").read_text()
+
+    assert "renderSelectedApplicationResult" in javascript
+    assert "const item = selectedApplications[activeApplicationIndex]" in javascript
+    assert "selectedApplications.map((item)" not in javascript
+    assert 'class="selected-result-card"' in javascript
 
 
 def test_frontend_javascript_resets_invalid_and_successful_preview_state():

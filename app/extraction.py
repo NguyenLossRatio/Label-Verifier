@@ -49,6 +49,10 @@ BOTTLER_ADDRESS_PATTERN = re.compile(
     r"^.*\b(?:Bottled by|Produced by|Distilled by)\b.*$",
     re.IGNORECASE | re.MULTILINE,
 )
+BOTTLER_ADDRESS_CUE_ONLY_PATTERN = re.compile(
+    r"^(?:distilled\s+and\s+bottled\s+by|distilled\s+by|bottled\s+by|produced\s+by):?$",
+    re.IGNORECASE,
+)
 BREWED_CANNED_ADDRESS_PATTERN = re.compile(
     r"\b(BREWED\s*(?:&|AND)\s*CANNED\s+IN\s+.+?,\s*[A-Z]{2}\s+BY\s+.+?\b"
     r"(?:BREWING|BREWERY|DISTILLERY|WINERY|VINEYARDS?)\b(?:,?\s*(?:LLC|INC|CO\.?|COMPANY))?\.?)",
@@ -147,7 +151,9 @@ GENERIC_BRAND_LABELS = {
     "winery",
 }
 COMPANY_LEADING_NOISE_WORDS = {
+    "AM",
     "AQY",
+    "AS",
     "AY",
     "CANNED",
     "ERE",
@@ -155,9 +161,11 @@ COMPANY_LEADING_NOISE_WORDS = {
     "LOCAL",
     "ON",
     "QNEY",
+    "RA",
     "RIVEE",
     "RIVEK",
     "RIYEE",
+    "RAP",
     "SOE",
 }
 COMMON_FLUID_OUNCE_AMOUNTS = (
@@ -301,10 +309,11 @@ WARNING_REGION_RELATIVE_BOXES = (
 )
 FIELD_REGION_CONFIGS = ("--psm 6",)
 FIELD_REGION_RELATIVE_BOXES = (
-    ("center_address", (0.49, 0.12, 0.60, 0.64), 270),
-    ("bottom_center", (0.42, 0.84, 0.78, 1.0), 0),
-    ("bottom_right", (0.80, 0.84, 1.0, 1.0), 0),
-    ("left_warning", (0.03, 0.18, 0.19, 0.86), 270),
+    ("center_address", (0.49, 0.12, 0.60, 0.64), 270, FIELD_REGION_CONFIGS, "standard"),
+    ("bottom_center", (0.42, 0.84, 0.78, 1.0), 0, FIELD_REGION_CONFIGS, "standard"),
+    ("bottom_right", (0.80, 0.84, 1.0, 1.0), 0, FIELD_REGION_CONFIGS, "standard"),
+    ("left_warning", (0.03, 0.18, 0.19, 0.86), 270, FIELD_REGION_CONFIGS, "standard"),
+    ("bottom_right_green_net", (0.785, 0.82, 0.855, 0.995), 0, ("--psm 11",), "green_text"),
 )
 FIELD_REGION_TRIGGER_FIELDS = (
     "alcohol_content",
@@ -321,6 +330,7 @@ EASYOCR_TRIGGER_FIELDS = (
     "bottler_address",
     "government_warning",
 )
+GREEN_TEXT_REGION_TARGET_DIMENSION = 900
 MAX_WARNING_SCAN_LINES = 24
 DEFAULT_OCR_MODE = "tesseract"
 _EASYOCR_READER = None
@@ -457,13 +467,46 @@ def _relative_crop(image: Image.Image, relative_box: tuple[float, float, float, 
     )
 
 
-def _prepare_field_region_images_for_ocr(image: Image.Image) -> list[Image.Image]:
+def _resize_to_longest_side(image: Image.Image, target_dimension: int) -> Image.Image:
+    width, height = image.size
+    longest_side = max(width, height)
+    if longest_side == target_dimension:
+        return image
+
+    scale = target_dimension / longest_side
+    return image.resize(
+        (round(width * scale), round(height * scale)),
+        Image.Resampling.LANCZOS,
+    )
+
+
+def _prepare_green_text_region_for_ocr(image: Image.Image) -> Image.Image:
+    rgb = image.convert("RGB")
+    mask = Image.new("L", rgb.size, 255)
+    mask_pixels = mask.load()
+    source_pixels = rgb.load()
+
+    for y in range(rgb.height):
+        for x in range(rgb.width):
+            red, green, blue = source_pixels[x, y]
+            if green > red + 20 and green > blue + 10 and green > 110:
+                mask_pixels[x, y] = 0
+
+    prepared = _resize_to_longest_side(mask, GREEN_TEXT_REGION_TARGET_DIMENSION)
+    return prepared.filter(ImageFilter.SHARPEN)
+
+
+def _prepare_field_region_images_for_ocr(image: Image.Image) -> list[tuple[Image.Image, tuple[str, ...]]]:
     prepared_images = []
-    for _name, relative_box, rotation in FIELD_REGION_RELATIVE_BOXES:
-        prepared = _prepare_image_for_ocr(_relative_crop(image, relative_box))
+    for _name, relative_box, rotation, configs, processor in FIELD_REGION_RELATIVE_BOXES:
+        crop = _relative_crop(image, relative_box)
+        if processor == "green_text":
+            prepared = _prepare_green_text_region_for_ocr(crop)
+        else:
+            prepared = _prepare_image_for_ocr(crop)
         if rotation:
             prepared = prepared.rotate(rotation, expand=True)
-        prepared_images.append(prepared)
+        prepared_images.append((prepared, configs))
 
     return prepared_images
 
@@ -764,7 +807,7 @@ def _clean_net_contents_match(match: re.Match[str]) -> str:
             if normalized_amount != _normalize_number_text(amount):
                 return f"{normalized_amount} {unit}"
 
-    return match.group(0).strip()
+    return _clean_multiline_guess(match.group(0))
 
 
 def _guess_net_contents(raw_text: str) -> str:
@@ -1027,7 +1070,21 @@ def _producer_name_component(line: str) -> str:
         return company
 
     cleaned = _clean_guess_line(line)
+    cleaned_company = _clean_company_candidate(cleaned)
+    if _is_acronym_distillery_candidate(cleaned_company):
+        return cleaned_company
+
     return cleaned if _is_potential_name_component(cleaned) else ""
+
+
+def _is_acronym_distillery_candidate(candidate: str) -> bool:
+    words = re.findall(r"[A-Za-z0-9]+", candidate)
+    return (
+        len(words) == 2
+        and len(words[0]) == 3
+        and words[0].isupper()
+        and words[1].upper() == "DISTILLERY"
+    )
 
 
 def _dedupe_address_candidates(
@@ -1099,13 +1156,9 @@ def _bottler_address_candidates(raw_text: str) -> list[tuple[str, str, float]]:
 
     bottler_match = BOTTLER_ADDRESS_PATTERN.search(raw_text)
     if bottler_match is not None:
-        candidates.append(
-            (
-                _clean_address_guess(bottler_match.group(0)),
-                "bottler_address_pattern",
-                0.9,
-            )
-        )
+        address = _clean_address_guess(bottler_match.group(0))
+        if not BOTTLER_ADDRESS_CUE_ONLY_PATTERN.fullmatch(_clean_guess_line(address)):
+            candidates.append((address, "bottler_address_pattern", 0.9))
 
     brewed_canned_address = _guess_brewed_canned_address(raw_text)
     if brewed_canned_address:
@@ -1185,8 +1238,8 @@ def extract_text_from_image(image_bytes: bytes) -> tuple[str, int]:
                         and _should_try_field_region_ocr(image, results, started)
                     ):
                         field_region_attempted = True
-                        for prepared_image in _prepare_field_region_images_for_ocr(image):
-                            for config in FIELD_REGION_CONFIGS:
+                        for prepared_image, configs in _prepare_field_region_images_for_ocr(image):
+                            for config in configs:
                                 remaining_seconds = OCR_TIME_BUDGET_SECONDS - (time.perf_counter() - started)
                                 if remaining_seconds <= 0:
                                     break

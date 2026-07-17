@@ -449,6 +449,23 @@ def test_extract_text_from_image_uses_field_region_crops_for_missing_fields(monk
     assert "GOVERNMENT WARNING:" in text
 
 
+def test_extract_text_from_image_uses_green_bottom_right_crop_for_tiny_net_contents(monkeypatch):
+    def return_by_region(image, **kwargs):
+        width, height = image.size
+        if kwargs["config"] == "--psm 11" and 650 <= width <= 950 and 750 <= height <= 1100:
+            return "12\n\nFL. OZ."
+        return "PINEY RIVER\nLIZZIE TWISTER\nALC. 5.6% BY VOLUME"
+
+    monkeypatch.setattr(pytesseract, "image_to_string", return_by_region)
+
+    text, _ = extract_text_from_image(sized_png_bytes((2479, 1133)))
+    guesses = extract_field_guesses(text)
+
+    assert "12" in text
+    assert "FL. OZ." in text
+    assert guesses["net_contents"] == "12 FL. OZ."
+
+
 def test_extract_text_from_image_uses_center_rotated_crop_for_vertical_address(monkeypatch):
     def return_by_region(image, **kwargs):
         width, height = image.size
@@ -859,6 +876,20 @@ def test_extract_field_guesses_builds_bottler_address_from_nearby_brand_and_city
         candidate.source == "nearby_name_city_state"
         for candidate in candidates["bottler_address"]
     )
+
+
+def test_extract_field_guesses_builds_distilled_bottled_address_from_following_lines():
+    raw_text = """
+    <= DISTILLED AND BOTTLED BY
+    ra ABC DISTILLERY
+    FREDERICK, MD
+    750 ML
+    20% ALCOHOL BY VOLUME (40 PROOF)
+    """
+
+    guesses = extract_field_guesses(raw_text)
+
+    assert guesses["bottler_address"] == "ABC DISTILLERY, FREDERICK, MD"
 
 
 def test_extract_field_guesses_builds_bottler_address_with_full_state_name():
